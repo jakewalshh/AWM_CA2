@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html>
 <head>
@@ -48,6 +49,9 @@
                     <button class="btn btn-outline-primary" onclick="updateFleet()" id="refresh-btn">
                         🔄 Refresh Fleet
                     </button>
+                    <button class="btn btn-outline-secondary ms-2" onclick="toggleCounties()" id="toggle-counties-btn">
+                        🗺️ Show County Borders
+                    </button>
                 </div>
             </div>
         </div>
@@ -62,6 +66,11 @@
         }).addTo(map);
 
         const lorryMarkers = {};
+        let countyLayer = null;
+        let countiesVisible = false;
+        let countiesDataPromise = null;
+
+        const countiesUrl = "{% static 'tracking/data/CountyBordersGeoJSON.geojson' %}";
 
         function updateFleet() {
             document.getElementById('refresh-btn').disabled = true;
@@ -124,6 +133,52 @@
         // Auto-refresh every 15 seconds
         updateFleet();
         setInterval(updateFleet, 15000);
+
+        function loadCountyData() {
+            if (!countiesDataPromise) {
+                countiesDataPromise = fetch(countiesUrl).then(resp => resp.json());
+            }
+            return countiesDataPromise;
+        }
+
+        function toggleCounties() {
+            const btn = document.getElementById('toggle-counties-btn');
+            if (countiesVisible) {
+                if (countyLayer) {
+                    map.removeLayer(countyLayer);
+                }
+                countiesVisible = false;
+                btn.innerHTML = '🗺️ Show County Borders';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '🗺️ Loading...';
+
+            loadCountyData()
+                .then(geojson => {
+                    if (!countyLayer) {
+                        countyLayer = L.geoJSON(geojson, {
+                            style: {
+                                color: '#1d4ed8',
+                                weight: 2,
+                                fill: false
+                            }
+                        }).addTo(map);
+                    } else {
+                        countyLayer.addTo(map);
+                    }
+                    countiesVisible = true;
+                    btn.innerHTML = '🗺️ Hide County Borders';
+                })
+                .catch(err => {
+                    console.error('Error loading county borders:', err);
+                    btn.innerHTML = '🗺️ Show County Borders';
+                })
+                .finally(() => {
+                    btn.disabled = false;
+                });
+        }
     </script>
 </body>
 </html>
