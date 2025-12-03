@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Lorry Fleet Tracker</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        #map { height: 75vh; width: 100%; border: 1px solid #ddd; }
+        .lorry-card { cursor: pointer; }
+        .lorry-card:hover { background-color: #e9ecef; }
+        body { padding-top: 20px; }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row mb-3">
+            <div class="col-12">
+                <h1 class="text-primary">🚛 Lorry Fleet Tracker</h1>
+                <p class="text-muted">Live tracking across Ireland with county boundaries</p>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <h5><i class="bi bi-truck"></i> Fleet Status</h5>
+                    </div>
+                    <div class="card-body p-0">
+                        <div id="lorry-list" class="list-group list-group-flush">
+                            <div class="list-group-item text-center p-4">
+                                <div class="spinner-border" role="status">
+                                    <span class="visually-hidden">Loading...</span>
+                                </div>
+                                Loading fleet...
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-md-9">
+                <div id="map"></div>
+                <div class="mt-2 text-center">
+                    <button class="btn btn-outline-primary" onclick="updateFleet()" id="refresh-btn">
+                        🔄 Refresh Fleet
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize map centered on Ireland
+        const map = L.map('map').setView([53.35, -8.0], 7);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const lorryMarkers = {};
+
+        function updateFleet() {
+            document.getElementById('refresh-btn').disabled = true;
+            document.getElementById('refresh-btn').innerHTML = '🔄 Updating...';
+            
+            fetch('/api/latest-locations/')
+                .then(response => response.json())
+                .then(data => {
+                    let listHtml = '';
+                    
+                    data.forEach(location => {
+                        const lat = location.point.coordinates[1];
+                        const lon = location.point.coordinates[0];
+                        const lorryId = location.lorry;
+                        const lorryName = location.lorry_name;
+                        
+                        // Update list
+                        listHtml += `
+                            <div class="list-group-item d-flex justify-content-between align-items-center lorries-card" data-id="${lorryId}">
+                                <div>
+                                    <strong>${lorryName}</strong><br>
+                                    <small class="text-muted">${new Date(location.timestamp).toLocaleString()}</small>
+                                </div>
+                                <span class="badge bg-primary rounded-pill">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>
+                            </div>
+                        `;
+                        
+                        // Update map marker
+                        if (lorryMarkers[lorryId]) {
+                            lorryMarkers[lorryId].setLatLng([lat, lon]);
+                        } else {
+                            lorryMarkers[lorryId] = L.marker([lat, lon], {
+                                icon: L.divIcon({
+                                    className: 'lorry-marker',
+                                    html: '🚛',
+                                    iconSize: [30, 30],
+                                    iconAnchor: [15, 15]
+                                })
+                            })
+                            .addTo(map)
+                            .bindPopup(`<b>${lorryName}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+                        }
+                    });
+                    
+                    document.getElementById('lorry-list').innerHTML = listHtml || '<div class="list-group-item text-center text-muted p-4">No lorries online</div>';
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    document.getElementById('lorry-list').innerHTML = '<div class="list-group-item text-center text-danger p-4">Error loading fleet</div>';
+                })
+                .finally(() => {
+                    document.getElementById('refresh-btn').disabled = false;
+                    document.getElementById('refresh-btn').innerHTML = '🔄 Refresh Fleet';
+                });
+        }
+
+        // Auto-refresh every 15 seconds
+        updateFleet();
+        setInterval(updateFleet, 15000);
+    </script>
+</body>
+</html>
