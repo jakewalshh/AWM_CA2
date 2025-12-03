@@ -73,8 +73,11 @@
                     let listHtml = '';
                     
                     data.forEach(location => {
-                        const lat = location.point.coordinates[1];
-                        const lon = location.point.coordinates[0];
+                        const lat = location.latitude;
+                        const lon = location.longitude;
+                        if (lat === null || lon === null || lat === undefined || lon === undefined) {
+                            return; // skip entries without coordinates
+                        }
                         const lorryId = location.lorry;
                         const lorryName = location.lorry_name;
                         
