@@ -22,11 +22,23 @@ services:
     env_file: .env
     volumes:
       - .:/app
+      - staticfiles:/app/staticfiles
     ports:
       - "8000:8000"
     depends_on:
       db:
         condition: service_healthy
+
+  nginx:
+    image: nginx:alpine
+    container_name: fleettracker-nginx
+    depends_on:
+      - web
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - staticfiles:/staticfiles
 
   pgadmin:
     image: dpage/pgadmin4
@@ -41,3 +53,4 @@ services:
 
 volumes:
   fleettracker_pgdata:
+  staticfiles:
