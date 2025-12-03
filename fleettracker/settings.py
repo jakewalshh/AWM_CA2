@@ -135,5 +135,5 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Simple token for ingest endpoint (set INGEST_TOKEN in environment for production)
+# Simple token for ingest endpoint (override in env for any deployed environment)
 INGEST_TOKEN = os.getenv('INGEST_TOKEN', 'devtoken')

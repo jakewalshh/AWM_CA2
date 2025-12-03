@@ -1,10 +1,12 @@
 from rest_framework import viewsets
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
 from django.conf import settings
 from django.shortcuts import get_object_or_404
 from django.contrib.gis.geos import Point
 from django.db.models import Max
+from django.views.decorators.csrf import csrf_exempt
 from .models import Lorry, Location
 from .serializers import LorrySerializer, LocationSerializer
 
@@ -30,8 +32,12 @@ def latest_lorry_locations(request):
 
 
 @api_view(['POST'])
+@csrf_exempt  # allow posting without CSRF token; we gate with ingest token instead
+@authentication_classes([])  # disable SessionAuthentication so browser CSRF isn't required (token-only)
+@permission_classes([AllowAny])
 def ingest_location(request):
     """Simple ingest endpoint to post a lorry's latest position."""
+    # Token gate for non-browser clients; set a strong token via env in production
     token = request.headers.get('X-INGEST-TOKEN')
     if not settings.INGEST_TOKEN or token != settings.INGEST_TOKEN:
         return Response({'detail': 'Unauthorized'}, status=401)
