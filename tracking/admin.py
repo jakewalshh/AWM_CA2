@@ -4,7 +4,7 @@ from .models import Lorry, Location
 
 @admin.register(Lorry)
 class LorryAdmin(admin.ModelAdmin):
-    list_display = ['name', 'created_at']
+    list_display = ['id', 'name', 'created_at']
     search_fields = ['name']
 
 @admin.register(Location)
