@@ -55,6 +55,9 @@
                     <button class="btn btn-outline-success ms-2" onclick="toggleLiveLocation()" id="live-location-btn">
                         📡 Start Live Location
                     </button>
+                    <div class="small text-muted mt-2" id="route-status">
+                        Click a lorry to set the origin, then click the map to set a destination.
+                    </div>
                 </div>
             </div>
         </div>
@@ -67,17 +70,25 @@
         L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
             attribution: '© OpenStreetMap contributors'
         }).addTo(map);
+        map.on('click', handleMapClick);
 
         const lorryMarkers = {};
         let countyLayer = null;
         let countiesVisible = false;
         let countiesDataPromise = null;
+        let selectedOrigin = null;
+        let selectedDestination = null;
+        let routeLine = null;
+        let destinationMarker = null;
 
         // Config for posting live browser location to backend
         const liveUpdateConfig = {
             lorryId: 2, // JakeMac
             ingestUrl: '/api/ingest-location/',
             ingestToken: 'devtoken' // change for production; matches settings.INGEST_TOKEN
+        };
+        const routingConfig = {
+            endpoint: '/api/route/'
         };
 
         // Track user's live location
@@ -104,6 +115,7 @@
                         }
                         const lorryId = location.lorry;
                         const lorryName = location.lorry_name;
+                        const popupHtml = `<b>${lorryName}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`;
                         
                         // Update list
                         listHtml += `
@@ -118,7 +130,7 @@
                         
                         // Update map marker
                         if (lorryMarkers[lorryId]) {
-                            lorryMarkers[lorryId].setLatLng([lat, lon]);
+                            lorryMarkers[lorryId].setLatLng([lat, lon]).bindPopup(popupHtml);
                         } else {
                             lorryMarkers[lorryId] = L.marker([lat, lon], {
                                 icon: L.divIcon({
@@ -129,8 +141,10 @@
                                 })
                             })
                             .addTo(map)
-                            .bindPopup(`<b>${lorryName}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`);
+                            .bindPopup(popupHtml);
                         }
+
+                        attachLorryClick(lorryId, lorryName, lorryMarkers[lorryId]);
                     });
                     
                     document.getElementById('lorry-list').innerHTML = listHtml || '<div class="list-group-item text-center text-muted p-4">No lorries online</div>';
@@ -295,6 +309,102 @@
             }).catch(err => {
                 console.warn('Failed to post live location:', err);
             });
+        }
+
+        function attachLorryClick(lorryId, lorryName, marker) {
+            marker.off('click');
+            marker.on('click', () => {
+                const { lat, lng } = marker.getLatLng();
+                setOrigin(lorryId, lorryName, lat, lng);
+            });
+        }
+
+        function handleMapClick(e) {
+            setDestination(e.latlng.lat, e.latlng.lng);
+        }
+
+        function setOrigin(lorryId, lorryName, lat, lon) {
+            selectedOrigin = { lorryId, lorryName, lat, lon };
+            setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Click the map to choose a destination.`, 'info');
+            tryFetchRoute();
+        }
+
+        function setDestination(lat, lon) {
+            selectedDestination = { lat, lon };
+            if (destinationMarker) {
+                destinationMarker.setLatLng([lat, lon]);
+            } else {
+                destinationMarker = L.marker([lat, lon], {
+                    icon: L.divIcon({
+                        className: 'destination-marker',
+                        html: '🎯',
+                        iconSize: [24, 24],
+                        iconAnchor: [12, 12]
+                    })
+                }).addTo(map);
+            }
+            setRouteStatus(`Destination set at ${lat.toFixed(4)}, ${lon.toFixed(4)}${selectedOrigin ? '. Fetching route…' : '. Click a lorry to set origin.'}`, selectedOrigin ? 'info' : 'muted');
+            tryFetchRoute();
+        }
+
+        function tryFetchRoute() {
+            if (!selectedOrigin || !selectedDestination) {
+                return;
+            }
+            fetchRoute(selectedOrigin, selectedDestination);
+        }
+
+        async function fetchRoute(origin, destination) {
+            setRouteStatus('Fetching route...', 'info');
+            clearRoute();
+
+            const originStr = `${origin.lat.toFixed(5)},${origin.lon.toFixed(5)}`;
+            const destStr = `${destination.lat.toFixed(5)},${destination.lon.toFixed(5)}`;
+
+            try {
+                const resp = await fetch(`${routingConfig.endpoint}?origin=${originStr}&dest=${destStr}`);
+                if (!resp.ok) {
+                    const text = await resp.text();
+                    throw new Error(text || 'Route request failed');
+                }
+                const data = await resp.json();
+                const route = data.routes && data.routes[0];
+                if (!route || !route.legs || !route.legs[0] || !route.legs[0].points) {
+                    throw new Error('No route returned');
+                }
+                drawRoute(route);
+            } catch (err) {
+                console.error('Route error:', err);
+                setRouteStatus(`Unable to fetch route: ${err.message}`, 'error');
+            }
+        }
+
+        function drawRoute(route) {
+            const points = route.legs[0].points.map(p => [p.latitude, p.longitude]);
+            routeLine = L.polyline(points, { color: '#16a34a', weight: 5, opacity: 0.8 }).addTo(map);
+            map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+
+            const summary = route.summary || {};
+            const km = summary.lengthInMeters ? (summary.lengthInMeters / 1000).toFixed(1) : null;
+            const mins = summary.travelTimeInSeconds ? Math.round(summary.travelTimeInSeconds / 60) : null;
+            const stats = km && mins ? `${km} km, ~${mins} min` : 'Route ready';
+            setRouteStatus(`${stats} from ${selectedOrigin.lorryName} to destination.`, 'success');
+        }
+
+        function clearRoute() {
+            if (routeLine) {
+                map.removeLayer(routeLine);
+                routeLine = null;
+            }
+        }
+
+        function setRouteStatus(text, tone = 'muted') {
+            const el = document.getElementById('route-status');
+            if (!el) return;
+            el.classList.remove('text-muted', 'text-success', 'text-danger', 'text-primary');
+            const cls = tone === 'success' ? 'text-success' : tone === 'error' ? 'text-danger' : tone === 'info' ? 'text-primary' : 'text-muted';
+            el.classList.add(cls);
+            el.textContent = text;
         }
     </script>
 </body>

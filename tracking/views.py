@@ -7,6 +7,7 @@ from django.shortcuts import get_object_or_404
 from django.contrib.gis.geos import Point
 from django.db.models import Max
 from django.views.decorators.csrf import csrf_exempt
+import requests
 from .models import Lorry, Location
 from .serializers import LorrySerializer, LocationSerializer
 
@@ -68,3 +69,35 @@ def ingest_location(request):
     )
 
     return Response(LocationSerializer(location).data, status=201)
+
+
+@api_view(['GET'])
+def calculate_route(request):
+    """Proxy TomTom Routing API for a simple point-to-point route."""
+    origin = request.query_params.get('origin')  # "lat,lon"
+    dest = request.query_params.get('dest')      # "lat,lon"
+
+    if not origin or not dest:
+        return Response({'detail': 'origin and dest are required as \"lat,lon\"'}, status=400)
+
+    if not settings.TOMTOM_API_KEY:
+        return Response({'detail': 'TomTom API key not configured'}, status=500)
+
+    url = f"https://api.tomtom.com/routing/1/calculateRoute/{origin}:{dest}/json"
+    params = {
+        'key': settings.TOMTOM_API_KEY,
+        'instructionsType': 'none',
+        'routeRepresentation': 'polyline',
+        'computeTravelTimeFor': 'all',
+        'traffic': 'true'
+    }
+
+    try:
+        resp = requests.get(url, params=params, timeout=10)
+    except requests.RequestException as exc:
+        return Response({'detail': f'Failed to reach TomTom: {exc}'}, status=502)
+
+    if resp.status_code != 200:
+        return Response({'detail': 'TomTom error', 'status': resp.status_code, 'body': resp.text}, status=502)
+
+    return Response(resp.json())
