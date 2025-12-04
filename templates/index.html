@@ -73,6 +73,13 @@
         let countiesVisible = false;
         let countiesDataPromise = null;
 
+        // Config for posting live browser location to backend
+        const liveUpdateConfig = {
+            lorryId: 2, // JakeMac
+            ingestUrl: '/api/ingest-location/',
+            ingestToken: 'devtoken' // change for production; matches settings.INGEST_TOKEN
+        };
+
         // Track user's live location
         let liveLocationWatchId = null;
         let userMarker = null;
@@ -200,29 +207,7 @@
 
             liveLocationWatchId = navigator.geolocation.watchPosition(
                 (position) => {
-                    const lat = position.coords.latitude;
-                    const lon = position.coords.longitude;
-                    const latLng = [lat, lon];
-
-                    if (userMarker) {
-                        userMarker.setLatLng(latLng);
-                    } else {
-                        userMarker = L.circleMarker(latLng, {
-                            radius: 8,
-                            color: '#007bff',
-                            fillColor: '#007bff',
-                            fillOpacity: 0.9
-                        })
-                        .addTo(map)
-                        .bindPopup('• Your Location')
-                        .openPopup();
-                    }
-
-                    if (!hasCenteredOnUser) {
-                        map.setView(latLng, 13);
-                        hasCenteredOnUser = true;
-                    }
-
+                    handleLiveLocationUpdate(position.coords.latitude, position.coords.longitude);
                     btn.innerHTML = '⏸️ Stop Live Location';
                     btn.disabled = false;
                 },
@@ -262,6 +247,54 @@
             } else {
                 startLiveLocation();
             }
+        }
+
+        function handleLiveLocationUpdate(lat, lon) {
+            const latLng = [lat, lon];
+
+            if (userMarker) {
+                userMarker.setLatLng(latLng);
+            } else {
+                userMarker = L.circleMarker(latLng, {
+                    radius: 8,
+                    color: '#007bff',
+                    fillColor: '#007bff',
+                    fillOpacity: 0.9
+                })
+                .addTo(map)
+                .bindPopup('• Your Location')
+                .openPopup();
+            }
+
+            if (!hasCenteredOnUser) {
+                map.setView(latLng, 13);
+                hasCenteredOnUser = true;
+            }
+
+            // Send to backend to update lorry position when live toggle is on
+            postLiveLocation(lat, lon);
+        }
+
+        function postLiveLocation(lat, lon) {
+            // Require config to be set; avoid posting with missing auth
+            if (!liveUpdateConfig.ingestUrl || !liveUpdateConfig.ingestToken || !liveUpdateConfig.lorryId) {
+                return;
+            }
+
+            fetch(liveUpdateConfig.ingestUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-INGEST-TOKEN': liveUpdateConfig.ingestToken
+                },
+                body: JSON.stringify({
+                    lorry_id: liveUpdateConfig.lorryId,
+                    lat: lat,
+                    lon: lon
+                })
+            }).catch(err => {
+                console.warn('Failed to post live location:', err);
+            });
         }
     </script>
 </body>
