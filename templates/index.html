@@ -52,6 +52,9 @@
                     <button class="btn btn-outline-secondary ms-2" onclick="toggleCounties()" id="toggle-counties-btn">
                         🗺️ Show County Borders
                     </button>
+                    <button class="btn btn-outline-success ms-2" onclick="toggleLiveLocation()" id="live-location-btn">
+                        📡 Start Live Location
+                    </button>
                 </div>
             </div>
         </div>
@@ -69,6 +72,11 @@
         let countyLayer = null;
         let countiesVisible = false;
         let countiesDataPromise = null;
+
+        // Track user's live location
+        let liveLocationWatchId = null;
+        let userMarker = null;
+        let hasCenteredOnUser = false;
 
         const countiesUrl = "{% static 'tracking/data/CountyBordersGeoJSON.geojson' %}";
 
@@ -178,6 +186,82 @@
                 .finally(() => {
                     btn.disabled = false;
                 });
+        }
+
+        function startLiveLocation() {
+            const btn = document.getElementById('live-location-btn');
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by your browser.');
+                return;
+            }
+
+            btn.disabled = true;
+            btn.innerHTML = '📡 Starting...';
+
+            liveLocationWatchId = navigator.geolocation.watchPosition(
+                (position) => {
+                    const lat = position.coords.latitude;
+                    const lon = position.coords.longitude;
+                    const latLng = [lat, lon];
+
+                    if (userMarker) {
+                        userMarker.setLatLng(latLng);
+                    } else {
+                        userMarker = L.circleMarker(latLng, {
+                            radius: 8,
+                            color: '#007bff',
+                            fillColor: '#007bff',
+                            fillOpacity: 0.9
+                        })
+                        .addTo(map)
+                        .bindPopup('• Your Location')
+                        .openPopup();
+                    }
+
+                    if (!hasCenteredOnUser) {
+                        map.setView(latLng, 13);
+                        hasCenteredOnUser = true;
+                    }
+
+                    btn.innerHTML = '⏸️ Stop Live Location';
+                    btn.disabled = false;
+                },
+                (err) => {
+                    console.warn('Failed to get location:', err);
+                    alert('Unable to access your location.');
+                    stopLiveLocation();
+                },
+                {
+                    enableHighAccuracy: true,
+                    maximumAge: 10000,
+                    timeout: 20000
+                }
+            );
+        }
+
+        function stopLiveLocation() {
+            const btn = document.getElementById('live-location-btn');
+            if (liveLocationWatchId !== null) {
+                navigator.geolocation.clearWatch(liveLocationWatchId);
+            }
+            liveLocationWatchId = null;
+            hasCenteredOnUser = false;
+
+            if (userMarker) {
+                map.removeLayer(userMarker);
+                userMarker = null;
+            }
+
+            btn.innerHTML = '📡 Start Live Location';
+            btn.disabled = false;
+        }
+
+        function toggleLiveLocation() {
+            if (liveLocationWatchId !== null) {
+                stopLiveLocation();
+            } else {
+                startLiveLocation();
+            }
         }
     </script>
 </body>
