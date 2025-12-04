@@ -86,7 +86,6 @@ def calculate_route(request):
     url = f"https://api.tomtom.com/routing/1/calculateRoute/{origin}:{dest}/json"
     params = {
         'key': settings.TOMTOM_API_KEY,
-        'instructionsType': 'none',
         'routeRepresentation': 'polyline',
         'computeTravelTimeFor': 'all',
         'traffic': 'true'
