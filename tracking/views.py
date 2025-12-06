@@ -145,21 +145,14 @@ def pois_for_lorry(request, lorry_id):
     if not route:
         return Response({}, status=204)
 
-    radius = int(request.query_params.get('radius_m', 2000))
-    types_param = request.query_params.get('types', 'fuel,toll')
-    query_templates = []
-    for t in types_param.split(','):
-        t = t.strip().lower()
-        if t == 'fuel':
-            query_templates.append('node["amenity"="fuel"](around:{radius},{lat},{lon});')
-            query_templates.append('way["amenity"="fuel"](around:{radius},{lat},{lon});')
-        elif t in ('toll', 'toll_booth'):
-            # Toll booths
-            query_templates.append('node["barrier"="toll_booth"](around:{radius},{lat},{lon});')
-            query_templates.append('way["barrier"="toll_booth"](around:{radius},{lat},{lon});')
-
-    if not query_templates:
-        return Response({'detail': 'No valid POI types provided'}, status=400)
+    # Hard-coded Overpass search
+    radius = 2000  # meters
+    query_templates = [
+        'node["amenity"="fuel"](around:{radius},{lat},{lon});',
+        'way["amenity"="fuel"](around:{radius},{lat},{lon});',
+        'node["barrier"="toll_booth"](around:{radius},{lat},{lon});',
+        'way["barrier"="toll_booth"](around:{radius},{lat},{lon});',
+    ]
 
     # Sample the route coordinates to limit query size
     coords = list(route.path.coords)  # (lon, lat)

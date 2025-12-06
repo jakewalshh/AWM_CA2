@@ -460,7 +460,7 @@
 
         setRouteStatus('Loading POIs...', 'info');
         try {
-            const resp = await fetch(`/api/lorry/${selectedOrigin.lorryId}/pois/?radius_m=2000&types=fuel,toll`);
+            const resp = await fetch(`/api/lorry/${selectedOrigin.lorryId}/pois/`);
             if (resp.status === 204) {
                 setRouteStatus('No stored route for this lorry; cannot load POIs.', 'error');
                 return;
