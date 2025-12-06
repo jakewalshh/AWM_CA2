@@ -20,6 +20,7 @@
     let routeLine = null;
     let destinationMarker = null;
     let clearRouteBtn = null;
+    const lorryRoutes = {}; // in-memory store of routes per lorry: { lorryId: { points, destination } }
 
     // Track user's live location
     let liveLocationWatchId = null;
@@ -267,27 +268,31 @@
     }
 
     function setOrigin(lorryId, lorryName, lat, lon) {
-        // New origin resets any existing route/destination
+        // Clear currently drawn route/destination (but keep stored routes for others)
+        clearDrawnRoute();
         selectedOrigin = { lorryId, lorryName, lat, lon };
-        clearRoute(true);
-        setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Click the map to choose a destination.`, 'info');
-        enableMapClick();
+
+        const stored = lorryRoutes[lorryId];
+        if (stored) {
+            // Render stored route for this lorry
+            selectedDestination = stored.destination;
+            ensureDestinationMarker(stored.destination.lat, stored.destination.lon);
+            drawRouteFromPoints(stored.points);
+            setRouteStatus(`Showing stored route for ${lorryName}.`, 'info');
+            disableMapClick();
+            enableClearButton();
+        } else {
+            // No stored route; prompt for destination
+            setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Click the map to choose a destination.`, 'info');
+            selectedDestination = null;
+            enableMapClick();
+            disableClearButton();
+        }
     }
 
     function setDestination(lat, lon) {
         selectedDestination = { lat, lon };
-        if (destinationMarker) {
-            destinationMarker.setLatLng([lat, lon]);
-        } else {
-            destinationMarker = L.marker([lat, lon], {
-                icon: L.divIcon({
-                    className: 'destination-marker',
-                    html: '🎯',
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12]
-                })
-            }).addTo(map);
-        }
+        ensureDestinationMarker(lat, lon);
         setRouteStatus(`Destination set at ${lat.toFixed(4)}, ${lon.toFixed(4)}${selectedOrigin ? '. Fetching route…' : '. Click a lorry to set origin.'}`, selectedOrigin ? 'info' : 'muted');
         tryFetchRoute();
     }
@@ -332,6 +337,14 @@
         routeLine = L.polyline(points, { color: '#16a34a', weight: 5, opacity: 0.8 }).addTo(map);
         map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
 
+        // Persist route for this lorry in the client store
+        if (selectedOrigin && selectedDestination) {
+            lorryRoutes[selectedOrigin.lorryId] = {
+                points: points,
+                destination: { ...selectedDestination }
+            };
+        }
+
         const summary = route.summary || {};
         const km = summary.lengthInMeters ? (summary.lengthInMeters / 1000).toFixed(1) : null;
         const mins = summary.travelTimeInSeconds ? Math.round(summary.travelTimeInSeconds / 60) : null;
@@ -353,6 +366,9 @@
         selectedDestination = null;
         disableMapClick();
         disableClearButton();
+        if (selectedOrigin) {
+            delete lorryRoutes[selectedOrigin.lorryId];
+        }
         if (keepOrigin && selectedOrigin) {
             setRouteStatus(`Route cleared. Click the map to choose a destination for ${selectedOrigin.lorryName}.`, 'muted');
             enableMapClick();
@@ -362,6 +378,30 @@
             }
             setRouteStatus('Route cleared. Click a lorry to set origin, then click the map for destination.', 'muted');
         }
+    }
+
+    function clearDrawnRoute() {
+        if (routeLine) {
+            map.removeLayer(routeLine);
+            routeLine = null;
+        }
+        if (destinationMarker) {
+            map.removeLayer(destinationMarker);
+            destinationMarker = null;
+        }
+        selectedDestination = null;
+        disableMapClick();
+        disableClearButton();
+    }
+
+    function drawRouteFromPoints(points) {
+        if (routeLine) {
+            map.removeLayer(routeLine);
+            routeLine = null;
+        }
+        routeLine = L.polyline(points, { color: '#16a34a', weight: 5, opacity: 0.8 }).addTo(map);
+        map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+        enableClearButton();
     }
 
     function enableMapClick() {
@@ -402,6 +442,21 @@
         const cls = tone === 'success' ? 'text-success' : tone === 'error' ? 'text-danger' : tone === 'info' ? 'text-primary' : 'text-muted';
         el.classList.add(cls);
         el.textContent = text;
+    }
+
+    function ensureDestinationMarker(lat, lon) {
+        if (destinationMarker) {
+            destinationMarker.setLatLng([lat, lon]);
+        } else {
+            destinationMarker = L.marker([lat, lon], {
+                icon: L.divIcon({
+                    className: 'destination-marker',
+                    html: '🎯',
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                })
+            }).addTo(map);
+        }
     }
 
     // Auto-refresh every 15 seconds
