@@ -274,7 +274,14 @@
     }
 
     function handleMapClick(e) {
-        if (!mapClickActive) return;
+        if (!mapClickActive) {
+            // Not in destination set mode: hide current route/POIs
+            clearDrawnRoute();
+            clearActiveRouteInfo();
+            clearPoiLayer();
+            setRouteStatus('Route hidden. Click a lorry to view or set a destination.', 'muted');
+            return;
+        }
         setDestination(e.latlng.lat, e.latlng.lng);
         disableMapClick();
     }
@@ -285,6 +292,7 @@
         selectedOrigin = { lorryId, lorryName, lat, lon };
         disableClearButton();
         clearActiveRouteInfo();
+        clearPoiLayer();
         setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Checking for stored route...`, 'info');
         loadStoredRoute(lorryId, lorryName);
     }
@@ -387,6 +395,8 @@
         selectedDestination = null;
         disableMapClick();
         disableClearButton();
+        clearPoiLayer();
+        clearActiveRouteInfo();
     }
 
     function drawRouteFromPoints(points) {
