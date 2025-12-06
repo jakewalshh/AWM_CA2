@@ -1,11 +1,11 @@
-const CACHE_NAME = 'fleettracker-pwa-v1';
+const CACHE_NAME = 'fleettracker-pwa-v2';
 const ASSETS = [
-  '/',
+  '/?v=2',
   '/static/tracking/css/app.css',
   '/static/tracking/js/app.js',
   '/static/tracking/manifest.json',
-  '/static/tracking/icons/icon-192.png',
-  '/static/tracking/icons/icon-512.png'
+  '/static/tracking/icons/lorry_192.png?v=2',
+  '/static/tracking/icons/lorry_512.png?v=2'
 ];
 
 function isStaticAsset(request) {
