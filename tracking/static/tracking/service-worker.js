@@ -8,6 +8,12 @@ const ASSETS = [
   '/static/tracking/icons/icon-512.png'
 ];
 
+function isStaticAsset(request) {
+  const url = new URL(request.url);
+  if (!url.pathname.startsWith('/static/')) return false;
+  return /\.(css|js|png|jpg|jpeg|svg|webp|json)$/i.test(url.pathname);
+}
+
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME)
@@ -26,16 +32,30 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-      return fetch(event.request).then(resp => {
-        if (event.request.url.startsWith(self.location.origin)) {
+  const url = new URL(event.request.url);
+  // Always go to network for API calls and admin pages to avoid stale data
+  if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/admin')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  // For navigations (HTML), use network-first to keep pages fresh
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match('/'))
+    );
+    return;
+  }
+  // Cache-first only for static assets
+  if (isStaticAsset(event.request)) {
+    event.respondWith(
+      caches.match(event.request).then(cached => {
+        if (cached) return cached;
+        return fetch(event.request).then(resp => {
           const clone = resp.clone();
           caches.open(CACHE_NAME).then(cache => cache.put(event.request, clone));
-        }
-        return resp;
-      }).catch(() => cached || Promise.reject());
-    })
-  );
+          return resp;
+        });
+      })
+    );
+  }
 });
