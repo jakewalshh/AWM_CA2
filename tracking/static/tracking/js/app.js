@@ -20,7 +20,6 @@
     let routeLine = null;
     let destinationMarker = null;
     let clearRouteBtn = null;
-    const lorryRoutes = {}; // in-memory store of routes per lorry: { lorryId: { points, destination } }
 
     // Track user's live location
     let liveLocationWatchId = null;
@@ -268,26 +267,12 @@
     }
 
     function setOrigin(lorryId, lorryName, lat, lon) {
-        // Clear currently drawn route/destination (but keep stored routes for others)
+        // Clear drawn layers for previous selection
         clearDrawnRoute();
         selectedOrigin = { lorryId, lorryName, lat, lon };
-
-        const stored = lorryRoutes[lorryId];
-        if (stored) {
-            // Render stored route for this lorry
-            selectedDestination = stored.destination;
-            ensureDestinationMarker(stored.destination.lat, stored.destination.lon);
-            drawRouteFromPoints(stored.points);
-            setRouteStatus(`Showing stored route for ${lorryName}.`, 'info');
-            disableMapClick();
-            enableClearButton();
-        } else {
-            // No stored route; prompt for destination
-            setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Click the map to choose a destination.`, 'info');
-            selectedDestination = null;
-            enableMapClick();
-            disableClearButton();
-        }
+        disableClearButton();
+        setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Checking for stored route...`, 'info');
+        loadStoredRoute(lorryId, lorryName);
     }
 
     function setDestination(lat, lon) {
@@ -330,19 +315,11 @@
 
     function drawRoute(route) {
         const points = route.legs[0].points.map(p => [p.latitude, p.longitude]);
-        if (routeLine) {
-            map.removeLayer(routeLine);
-            routeLine = null;
-        }
-        routeLine = L.polyline(points, { color: '#16a34a', weight: 5, opacity: 0.8 }).addTo(map);
-        map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
+        drawRouteFromPoints(points);
 
-        // Persist route for this lorry in the client store
+        // Persist route server-side
         if (selectedOrigin && selectedDestination) {
-            lorryRoutes[selectedOrigin.lorryId] = {
-                points: points,
-                destination: { ...selectedDestination }
-            };
+            saveRouteToServer(selectedOrigin.lorryId, points, selectedDestination);
         }
 
         const summary = route.summary || {};
@@ -367,7 +344,7 @@
         disableMapClick();
         disableClearButton();
         if (selectedOrigin) {
-            delete lorryRoutes[selectedOrigin.lorryId];
+            clearStoredRoute(selectedOrigin.lorryId);
         }
         if (keepOrigin && selectedOrigin) {
             setRouteStatus(`Route cleared. Click the map to choose a destination for ${selectedOrigin.lorryName}.`, 'muted');
@@ -456,6 +433,59 @@
                     iconAnchor: [12, 12]
                 })
             }).addTo(map);
+        }
+    }
+
+    async function loadStoredRoute(lorryId, lorryName) {
+        try {
+            const resp = await fetch(`/api/lorry/${lorryId}/route/`);
+            if (resp.status === 204) {
+                setRouteStatus(`Origin set to ${lorryName}. Click the map to choose a destination.`, 'info');
+                enableMapClick();
+                return;
+            }
+            if (!resp.ok) {
+                throw new Error(await resp.text() || 'Failed to load stored route');
+            }
+            const data = await resp.json();
+            if (!data.path || !data.destination) {
+                setRouteStatus(`Origin set to ${lorryName}. Click the map to choose a destination.`, 'info');
+                enableMapClick();
+                return;
+            }
+            selectedDestination = { lat: data.destination[0], lon: data.destination[1] };
+            ensureDestinationMarker(selectedDestination.lat, selectedDestination.lon);
+            drawRouteFromPoints(data.path);
+            disableMapClick();
+            setRouteStatus(`Showing stored route for ${lorryName}.`, 'info');
+        } catch (err) {
+            console.error('Load route error:', err);
+            setRouteStatus(`Origin set to ${lorryName}. Could not load stored route. Click the map to choose a destination.`, 'error');
+            enableMapClick();
+        }
+    }
+
+    async function saveRouteToServer(lorryId, points, destination) {
+        try {
+            await fetch('/api/routes/', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    lorry: lorryId,
+                    path: points, // [lat, lon]
+                    destination: [destination.lat, destination.lon]
+                })
+            });
+        } catch (err) {
+            console.warn('Failed to save route:', err);
+        }
+    }
+
+    async function clearStoredRoute(lorryId) {
+        try {
+            await fetch(`/api/lorry/${lorryId}/route/clear/`, { method: 'DELETE' });
+        } catch (err) {
+            console.warn('Failed to clear stored route:', err);
         }
     }
 

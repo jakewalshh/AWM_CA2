@@ -8,8 +8,8 @@ from django.contrib.gis.geos import Point
 from django.db.models import Max
 from django.views.decorators.csrf import csrf_exempt
 import requests
-from .models import Lorry, Location
-from .serializers import LorrySerializer, LocationSerializer
+from .models import Lorry, Location, LorryRoute
+from .serializers import LorrySerializer, LocationSerializer, LorryRouteSerializer
 
 class LorryViewSet(viewsets.ModelViewSet):
     queryset = Lorry.objects.all()
@@ -69,6 +69,40 @@ def ingest_location(request):
     )
 
     return Response(LocationSerializer(location).data, status=201)
+
+
+@api_view(['GET'])
+def latest_route_for_lorry(request, lorry_id):
+    """Fetch the most recent saved route for a lorry."""
+    lorry = get_object_or_404(Lorry, pk=lorry_id)
+    route = LorryRoute.objects.filter(lorry=lorry).order_by('-created_at').first()
+    if not route:
+        return Response({}, status=204)
+    return Response(LorryRouteSerializer(route).data)
+
+
+@api_view(['POST'])
+@csrf_exempt
+@authentication_classes([])
+@permission_classes([AllowAny])
+def save_route(request):
+    """Persist a route for a lorry (overwrites by simply adding a new latest record)."""
+    serializer = LorryRouteSerializer(data=request.data)
+    if serializer.is_valid():
+        serializer.save()
+        return Response(serializer.data, status=201)
+    return Response(serializer.errors, status=400)
+
+
+@api_view(['DELETE'])
+@csrf_exempt
+@authentication_classes([])
+@permission_classes([AllowAny])
+def clear_route(request, lorry_id):
+    """Delete all stored routes for a lorry (used by clear button)."""
+    lorry = get_object_or_404(Lorry, pk=lorry_id)
+    LorryRoute.objects.filter(lorry=lorry).delete()
+    return Response(status=204)
 
 
 @api_view(['GET'])
