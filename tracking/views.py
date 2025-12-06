@@ -3,6 +3,7 @@ from rest_framework.decorators import api_view, authentication_classes, permissi
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny
 from django.conf import settings
+from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from django.contrib.gis.geos import Point
 from django.db.models import Max
@@ -135,6 +136,12 @@ def calculate_route(request):
         return Response({'detail': 'TomTom error', 'status': resp.status_code, 'body': resp.text}, status=502)
 
     return Response(resp.json())
+
+
+def service_worker(request):
+    """Serve the service worker from the root scope."""
+    sw_path = settings.BASE_DIR / 'tracking' / 'static' / 'tracking' / 'service-worker.js'
+    return FileResponse(open(sw_path, 'rb'), content_type='application/javascript')
 
 
 @api_view(['GET'])

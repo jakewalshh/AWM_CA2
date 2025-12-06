@@ -486,6 +486,15 @@
         }
     }
 
+    // Register service worker for PWA
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js').catch(err => {
+                console.warn('SW registration failed', err);
+            });
+        });
+    }
+
     // --- Live routing for JakeMac (lorryId = 2) ---
     async function toggleLiveRouting() {
         if (liveRoutingTimer) {

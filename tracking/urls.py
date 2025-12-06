@@ -15,4 +15,5 @@ urlpatterns = [
     path('api/lorry/<int:lorry_id>/route/clear/', views.clear_route, name='clear_route'),
     path('api/routes/', views.save_route, name='save_route'),
     path('api/lorry/<int:lorry_id>/pois/', views.pois_for_lorry, name='pois_for_lorry'),
+    path('service-worker.js', views.service_worker, name='service_worker'),
 ]
