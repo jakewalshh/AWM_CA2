@@ -9,7 +9,7 @@
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         attribution: '© OpenStreetMap contributors'
     }).addTo(map);
-    map.on('click', handleMapClick);
+    let mapClickActive = false;
 
     const lorryMarkers = {};
     let countyLayer = null;
@@ -19,6 +19,7 @@
     let selectedDestination = null;
     let routeLine = null;
     let destinationMarker = null;
+    let clearRouteBtn = null;
 
     // Track user's live location
     let liveLocationWatchId = null;
@@ -260,13 +261,17 @@
     }
 
     function handleMapClick(e) {
+        if (!mapClickActive) return;
         setDestination(e.latlng.lat, e.latlng.lng);
+        disableMapClick();
     }
 
     function setOrigin(lorryId, lorryName, lat, lon) {
+        // New origin resets any existing route/destination
         selectedOrigin = { lorryId, lorryName, lat, lon };
+        clearRoute(true);
         setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Click the map to choose a destination.`, 'info');
-        tryFetchRoute();
+        enableMapClick();
     }
 
     function setDestination(lat, lon) {
@@ -296,7 +301,6 @@
 
     async function fetchRoute(origin, destination) {
         setRouteStatus('Fetching route...', 'info');
-        clearRoute();
 
         const originStr = `${origin.lat.toFixed(5)},${origin.lon.toFixed(5)}`;
         const destStr = `${destination.lat.toFixed(5)},${destination.lon.toFixed(5)}`;
@@ -321,6 +325,10 @@
 
     function drawRoute(route) {
         const points = route.legs[0].points.map(p => [p.latitude, p.longitude]);
+        if (routeLine) {
+            map.removeLayer(routeLine);
+            routeLine = null;
+        }
         routeLine = L.polyline(points, { color: '#16a34a', weight: 5, opacity: 0.8 }).addTo(map);
         map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
 
@@ -329,12 +337,61 @@
         const mins = summary.travelTimeInSeconds ? Math.round(summary.travelTimeInSeconds / 60) : null;
         const stats = km && mins ? `${km} km, ~${mins} min` : 'Route ready';
         setRouteStatus(`${stats} from ${selectedOrigin.lorryName} to destination.`, 'success');
+        disableMapClick();
+        enableClearButton();
     }
 
-    function clearRoute() {
+    function clearRoute(keepOrigin = false) {
         if (routeLine) {
             map.removeLayer(routeLine);
             routeLine = null;
+        }
+        if (destinationMarker) {
+            map.removeLayer(destinationMarker);
+            destinationMarker = null;
+        }
+        selectedDestination = null;
+        disableMapClick();
+        disableClearButton();
+        if (keepOrigin && selectedOrigin) {
+            setRouteStatus(`Route cleared. Click the map to choose a destination for ${selectedOrigin.lorryName}.`, 'muted');
+            enableMapClick();
+        } else {
+            if (!keepOrigin) {
+                selectedOrigin = null;
+            }
+            setRouteStatus('Route cleared. Click a lorry to set origin, then click the map for destination.', 'muted');
+        }
+    }
+
+    function enableMapClick() {
+        map.off('click', handleMapClick);
+        map.on('click', handleMapClick);
+        mapClickActive = true;
+    }
+
+    function disableMapClick() {
+        if (mapClickActive) {
+            map.off('click', handleMapClick);
+            mapClickActive = false;
+        }
+    }
+
+    function enableClearButton() {
+        if (!clearRouteBtn) {
+            clearRouteBtn = document.getElementById('clear-route-btn');
+        }
+        if (clearRouteBtn) {
+            clearRouteBtn.disabled = false;
+        }
+    }
+
+    function disableClearButton() {
+        if (!clearRouteBtn) {
+            clearRouteBtn = document.getElementById('clear-route-btn');
+        }
+        if (clearRouteBtn) {
+            clearRouteBtn.disabled = true;
         }
     }
 
@@ -355,4 +412,5 @@
     window.updateFleet = updateFleet;
     window.toggleCounties = toggleCounties;
     window.toggleLiveLocation = toggleLiveLocation;
+    window.clearRoute = clearRoute;
 })();
