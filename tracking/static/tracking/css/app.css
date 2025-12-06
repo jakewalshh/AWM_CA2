@@ -1,0 +1,4 @@
+#map { height: 75vh; width: 100%; border: 1px solid #ddd; }
+.lorry-card { cursor: pointer; }
+.lorry-card:hover { background-color: #e9ecef; }
+body { padding-top: 20px; }
