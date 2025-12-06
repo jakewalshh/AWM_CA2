@@ -21,6 +21,7 @@
     let destinationMarker = null;
     let clearRouteBtn = null;
     let poiLayer = null;
+    let activeRouteInfoEl = null;
 
     // Track user's live location
     let liveLocationWatchId = null;
@@ -48,11 +49,18 @@
                     const lorryName = location.lorry_name;
                     const popupHtml = `<b>${lorryName}</b><br>${lat.toFixed(4)}, ${lon.toFixed(4)}`;
 
+                    // Pull ETA and destination if available
+                    const etaMins = location.travel_time_seconds ? Math.round(location.travel_time_seconds / 60) : null;
+                    const distanceKm = location.distance_meters ? (location.distance_meters / 1000).toFixed(1) : null;
+                    const etaText = etaMins ? `${etaMins} min` : 'ETA n/a';
+                    const distText = distanceKm ? `${distanceKm} km` : 'Dist n/a';
+
                     listHtml += `
                         <div class="list-group-item d-flex justify-content-between align-items-center lorries-card" data-id="${lorryId}">
                             <div>
                                 <strong>${lorryName}</strong><br>
-                                <small class="text-muted">${new Date(location.timestamp).toLocaleString()}</small>
+                                <small class="text-muted">${new Date(location.timestamp).toLocaleString()}</small><br>
+                                <small class="text-info">ETA: ${etaText} • Dist: ${distText}</small>
                             </div>
                             <span class="badge bg-primary rounded-pill">${lat.toFixed(4)}, ${lon.toFixed(4)}</span>
                         </div>
@@ -272,6 +280,7 @@
         clearDrawnRoute();
         selectedOrigin = { lorryId, lorryName, lat, lon };
         disableClearButton();
+        clearActiveRouteInfo();
         setRouteStatus(`Origin set to ${lorryName} (${lat.toFixed(4)}, ${lon.toFixed(4)}). Checking for stored route...`, 'info');
         loadStoredRoute(lorryId, lorryName);
     }
@@ -320,7 +329,9 @@
 
         // Persist route server-side
         if (selectedOrigin && selectedDestination) {
-            saveRouteToServer(selectedOrigin.lorryId, points, selectedDestination);
+            const summary = route.summary || {};
+            saveRouteToServer(selectedOrigin.lorryId, points, selectedDestination, summary);
+            setActiveRouteInfo(summary.lengthInMeters, summary.travelTimeInSeconds, selectedOrigin.lorryName);
         }
 
         const summary = route.summary || {};
@@ -348,6 +359,7 @@
         if (selectedOrigin) {
             clearStoredRoute(selectedOrigin.lorryId);
         }
+        clearActiveRouteInfo();
         if (keepOrigin && selectedOrigin) {
             setRouteStatus(`Route cleared. Click the map to choose a destination for ${selectedOrigin.lorryName}.`, 'muted');
             enableMapClick();
@@ -445,6 +457,31 @@
         }
     }
 
+    function setActiveRouteInfo(distanceMeters, travelSeconds, lorryName) {
+        if (!activeRouteInfoEl) {
+            activeRouteInfoEl = document.getElementById('active-route-info');
+        }
+        if (!activeRouteInfoEl) return;
+        const km = distanceMeters ? (distanceMeters / 1000).toFixed(1) : null;
+        const mins = travelSeconds ? Math.round(travelSeconds / 60) : null;
+        const parts = [];
+        if (km) parts.push(`${km} km`);
+        if (mins) parts.push(`~${mins} min`);
+        const meta = parts.length ? parts.join(', ') : 'Distance/time unavailable';
+        activeRouteInfoEl.innerHTML = `<strong>${lorryName || 'Route'}</strong><br>${meta}`;
+        activeRouteInfoEl.style.display = 'block';
+    }
+
+    function clearActiveRouteInfo() {
+        if (!activeRouteInfoEl) {
+            activeRouteInfoEl = document.getElementById('active-route-info');
+        }
+        if (activeRouteInfoEl) {
+            activeRouteInfoEl.style.display = 'none';
+            activeRouteInfoEl.innerHTML = '';
+        }
+    }
+
     async function loadPois() {
         if (!selectedOrigin) {
             setRouteStatus('Select a lorry with a stored route before loading POIs.', 'error');
@@ -524,6 +561,7 @@
             ensureDestinationMarker(selectedDestination.lat, selectedDestination.lon);
             drawRouteFromPoints(data.path);
             disableMapClick();
+            setActiveRouteInfo(data.distance_meters, data.travel_time_seconds, selectedOrigin.lorryName);
             setRouteStatus(`Showing stored route for ${lorryName}.`, 'info');
         } catch (err) {
             console.error('Load route error:', err);
@@ -532,7 +570,7 @@
         }
     }
 
-    async function saveRouteToServer(lorryId, points, destination) {
+    async function saveRouteToServer(lorryId, points, destination, summary) {
         try {
             await fetch('/api/routes/', {
                 method: 'POST',
@@ -540,7 +578,9 @@
                 body: JSON.stringify({
                     lorry: lorryId,
                     path: points, // [lat, lon]
-                    destination: [destination.lat, destination.lon]
+                    destination: [destination.lat, destination.lon],
+                    distance_meters: summary && summary.lengthInMeters ? summary.lengthInMeters : null,
+                    travel_time_seconds: summary && summary.travelTimeInSeconds ? summary.travelTimeInSeconds : null
                 })
             });
         } catch (err) {

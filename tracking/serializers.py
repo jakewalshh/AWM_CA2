@@ -11,6 +11,8 @@ class LocationSerializer(serializers.ModelSerializer):
     lorry_name = serializers.CharField(source='lorry.name', read_only=True)
     latitude = serializers.SerializerMethodField()
     longitude = serializers.SerializerMethodField()
+    travel_time_seconds = serializers.SerializerMethodField()
+    distance_meters = serializers.SerializerMethodField()
     
     def get_latitude(self, obj):
         return obj.point.y if obj.point else None
@@ -18,19 +20,29 @@ class LocationSerializer(serializers.ModelSerializer):
     def get_longitude(self, obj):
         return obj.point.x if obj.point else None
 
+    def get_travel_time_seconds(self, obj):
+        latest_route = obj.lorry.routes.order_by('-created_at').first()
+        return latest_route.travel_time_seconds if latest_route else None
+
+    def get_distance_meters(self, obj):
+        latest_route = obj.lorry.routes.order_by('-created_at').first()
+        return latest_route.distance_meters if latest_route else None
+
     class Meta:
         model = Location
-        fields = ['id', 'lorry', 'lorry_name', 'latitude', 'longitude', 'timestamp', 'current_county']
+        fields = ['id', 'lorry', 'lorry_name', 'latitude', 'longitude', 'timestamp', 'current_county', 'travel_time_seconds', 'distance_meters']
 
 
 class LorryRouteSerializer(serializers.ModelSerializer):
     # Accept lat/lon arrays; store as LineString/Point
     path = serializers.ListField(child=serializers.ListField(child=serializers.FloatField()), min_length=2)
     destination = serializers.ListField(child=serializers.FloatField(), min_length=2, max_length=2)
+    travel_time_seconds = serializers.IntegerField(required=False, allow_null=True)
+    distance_meters = serializers.IntegerField(required=False, allow_null=True)
 
     class Meta:
         model = LorryRoute
-        fields = ['id', 'lorry', 'path', 'destination', 'created_at']
+        fields = ['id', 'lorry', 'path', 'destination', 'travel_time_seconds', 'distance_meters', 'created_at']
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
