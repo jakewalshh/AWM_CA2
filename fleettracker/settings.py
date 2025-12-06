@@ -140,3 +140,6 @@ INGEST_TOKEN = os.getenv('INGEST_TOKEN', 'devtoken')
 
 # TomTom Routing API key (set TOMTOM_API_KEY in env)
 TOMTOM_API_KEY = os.getenv('TOMTOM_API_KEY', '')
+
+# Overpass API endpoint for POIs
+OVERPASS_URL = os.getenv('OVERPASS_URL', 'https://overpass-api.de/api/interpreter')

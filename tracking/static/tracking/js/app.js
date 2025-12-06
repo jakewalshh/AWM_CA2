@@ -20,6 +20,7 @@
     let routeLine = null;
     let destinationMarker = null;
     let clearRouteBtn = null;
+    let poiLayer = null;
 
     // Track user's live location
     let liveLocationWatchId = null;
@@ -340,6 +341,7 @@
             map.removeLayer(destinationMarker);
             destinationMarker = null;
         }
+        clearPoiLayer();
         selectedDestination = null;
         disableMapClick();
         disableClearButton();
@@ -379,6 +381,13 @@
         routeLine = L.polyline(points, { color: '#16a34a', weight: 5, opacity: 0.8 }).addTo(map);
         map.fitBounds(routeLine.getBounds(), { padding: [30, 30] });
         enableClearButton();
+    }
+
+    function clearPoiLayer() {
+        if (poiLayer) {
+            map.removeLayer(poiLayer);
+            poiLayer = null;
+        }
     }
 
     function enableMapClick() {
@@ -433,6 +442,64 @@
                     iconAnchor: [12, 12]
                 })
             }).addTo(map);
+        }
+    }
+
+    async function loadPois() {
+        if (!selectedOrigin) {
+            setRouteStatus('Select a lorry with a stored route before loading POIs.', 'error');
+            return;
+        }
+
+        // Toggle off if already loaded
+        if (poiLayer) {
+            clearPoiLayer();
+            setRouteStatus('POIs hidden.', 'muted');
+            return;
+        }
+
+        setRouteStatus('Loading POIs...', 'info');
+        try {
+            const resp = await fetch(`/api/lorry/${selectedOrigin.lorryId}/pois/?radius_m=2000&types=fuel,toll`);
+            if (resp.status === 204) {
+                setRouteStatus('No stored route for this lorry; cannot load POIs.', 'error');
+                return;
+            }
+            if (!resp.ok) {
+                throw new Error(await resp.text() || 'Failed to load POIs');
+            }
+            const data = await resp.json();
+            const features = data.features || [];
+            if (!features.length) {
+                setRouteStatus('No POIs found along this route.', 'info');
+                return;
+            }
+            poiLayer = L.geoJSON(data, {
+                pointToLayer: (feature, latlng) => {
+                    const type = (feature.properties && feature.properties.type) || '';
+                    const emoji = type === 'fuel' ? '⛽️' : type === 'parking' ? '🅿️' : type === 'truck_parking' ? '🅿️' : '🚧';
+                    return L.marker(latlng, {
+                        icon: L.divIcon({
+                            className: 'poi-marker',
+                            html: emoji,
+                            iconSize: [20, 20],
+                            iconAnchor: [10, 10]
+                        })
+                    });
+                },
+                onEachFeature: (feature, layer) => {
+                    const props = feature.properties || {};
+                    const name = props.name || 'POI';
+                    const type = props.type || 'poi';
+                    const tags = props.tags || {};
+                    const tagText = Object.entries(tags).map(([k,v]) => `${k}: ${v}`).join('<br>');
+                    layer.bindPopup(`<b>${name}</b><br>Type: ${type}${tagText ? '<br><small>'+tagText+'</small>' : ''}`);
+                }
+            }).addTo(map);
+            setRouteStatus(`Loaded ${features.length} POIs for ${selectedOrigin.lorryName}.`, 'success');
+        } catch (err) {
+            console.error('POI load error:', err);
+            setRouteStatus(`Unable to load POIs: ${err.message}`, 'error');
         }
     }
 
@@ -498,4 +565,5 @@
     window.toggleCounties = toggleCounties;
     window.toggleLiveLocation = toggleLiveLocation;
     window.clearRoute = clearRoute;
+    window.loadPois = loadPois;
 })();

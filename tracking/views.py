@@ -8,6 +8,7 @@ from django.contrib.gis.geos import Point
 from django.db.models import Max
 from django.views.decorators.csrf import csrf_exempt
 import requests
+from math import ceil
 from .models import Lorry, Location, LorryRoute
 from .serializers import LorrySerializer, LocationSerializer, LorryRouteSerializer
 
@@ -134,3 +135,91 @@ def calculate_route(request):
         return Response({'detail': 'TomTom error', 'status': resp.status_code, 'body': resp.text}, status=502)
 
     return Response(resp.json())
+
+
+@api_view(['GET'])
+def pois_for_lorry(request, lorry_id):
+    """Fetch fuel/toll POIs along a lorry's latest stored route using Overpass."""
+    lorry = get_object_or_404(Lorry, pk=lorry_id)
+    route = LorryRoute.objects.filter(lorry=lorry).order_by('-created_at').first()
+    if not route:
+        return Response({}, status=204)
+
+    radius = int(request.query_params.get('radius_m', 2000))
+    types_param = request.query_params.get('types', 'fuel,toll')
+    query_templates = []
+    for t in types_param.split(','):
+        t = t.strip().lower()
+        if t == 'fuel':
+            query_templates.append('node["amenity"="fuel"](around:{radius},{lat},{lon});')
+            query_templates.append('way["amenity"="fuel"](around:{radius},{lat},{lon});')
+        elif t in ('toll', 'toll_booth'):
+            # Toll booths
+            query_templates.append('node["barrier"="toll_booth"](around:{radius},{lat},{lon});')
+            query_templates.append('way["barrier"="toll_booth"](around:{radius},{lat},{lon});')
+
+    if not query_templates:
+        return Response({'detail': 'No valid POI types provided'}, status=400)
+
+    # Sample the route coordinates to limit query size
+    coords = list(route.path.coords)  # (lon, lat)
+    max_samples = 25
+    step = max(1, ceil(len(coords) / max_samples))
+    sampled = coords[::step]
+
+    # Build Overpass QL: multiple around queries for nodes/ways with tags
+    query_parts = ["[out:json][timeout:25];("]
+    for lon, lat in sampled:
+        for tpl in query_templates:
+            query_parts.append(tpl.format(radius=radius, lat=lat, lon=lon))
+    query_parts.append(");out center;")
+    overpass_query = "\n".join(query_parts)
+
+    try:
+        resp = requests.post(settings.OVERPASS_URL, data={'data': overpass_query}, timeout=30)
+    except requests.RequestException as exc:
+        return Response({'detail': f'Failed to reach Overpass: {exc}'}, status=502)
+
+    if resp.status_code != 200:
+        return Response({'detail': 'Overpass error', 'status': resp.status_code, 'body': resp.text}, status=502)
+
+    data = resp.json()
+    elements = data.get('elements', [])
+
+    # Deduplicate by OSM id
+    seen = set()
+    features = []
+    for el in elements:
+        osm_id = f"{el.get('type')}/{el.get('id')}"
+        if osm_id in seen:
+            continue
+        seen.add(osm_id)
+        if el.get('type') == 'node':
+            lat = el.get('lat')
+            lon = el.get('lon')
+        else:
+            center = el.get('center')
+            if not center:
+                continue
+            lat = center.get('lat')
+            lon = center.get('lon')
+        if lat is None or lon is None:
+            continue
+        tags_el = el.get('tags', {})
+        poi_type = tags_el.get('amenity') or tags_el.get('shop') or 'poi'
+        name = tags_el.get('name', poi_type.title())
+        features.append({
+            "type": "Feature",
+            "geometry": {"type": "Point", "coordinates": [lon, lat]},
+            "properties": {
+                "id": osm_id,
+                "name": name,
+                "type": poi_type,
+                "tags": tags_el
+            }
+        })
+
+    return Response({
+        "type": "FeatureCollection",
+        "features": features
+    })
