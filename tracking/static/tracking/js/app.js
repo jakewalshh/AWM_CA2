@@ -22,6 +22,10 @@
     let clearRouteBtn = null;
     let poiLayer = null;
     let activeRouteInfoEl = null;
+    // Live routing for JakeMac
+    const LIVE_ROUTING_LORRY_ID = 2;
+    let liveRoutingTimer = null;
+    let liveRoutingDestination = null;
 
     // Track user's live location
     let liveLocationWatchId = null;
@@ -482,6 +486,122 @@
         }
     }
 
+    // --- Live routing for JakeMac (lorryId = 2) ---
+    async function toggleLiveRouting() {
+        if (liveRoutingTimer) {
+            stopLiveRouting();
+        } else {
+            await startLiveRouting();
+        }
+    }
+
+    async function startLiveRouting() {
+        const btn = document.getElementById('live-routing-btn');
+        if (btn) {
+            btn.disabled = true;
+            btn.innerHTML = 'Starting...';
+        }
+        setRouteStatus('Starting live routing for JakeMac...', 'info');
+
+        // Load stored destination for JakeMac
+        try {
+            const resp = await fetch(`/api/lorry/${LIVE_ROUTING_LORRY_ID}/route/`);
+            if (resp.status === 204) {
+                throw new Error('No stored route for JakeMac. Set a destination first.');
+            }
+            if (!resp.ok) {
+                throw new Error(await resp.text() || 'Failed to load stored route');
+            }
+            const data = await resp.json();
+            if (!data.destination) {
+                throw new Error('No destination on stored route.');
+            }
+            liveRoutingDestination = { lat: data.destination[0], lon: data.destination[1] };
+        } catch (err) {
+            console.error(err);
+            setRouteStatus(err.message, 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '▶️ Live Route (JakeMac)';
+            }
+            return;
+        }
+
+        await liveRoutingTick();
+        liveRoutingTimer = setInterval(liveRoutingTick, 30000); // recompute every 30s
+
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '⏸️ Stop Live Route';
+        }
+    }
+
+    async function liveRoutingTick() {
+        if (!liveRoutingDestination) return;
+
+        // Get latest location for JakeMac from latest-locations
+        let origin = null;
+        try {
+            const resp = await fetch('/api/latest-locations/');
+            const data = await resp.json();
+            const match = data.find(loc => loc.lorry === LIVE_ROUTING_LORRY_ID);
+            if (match && match.latitude != null && match.longitude != null) {
+                origin = { lat: match.latitude, lon: match.longitude };
+            }
+        } catch (err) {
+            console.warn('Live routing: failed to load latest location', err);
+        }
+
+        if (!origin) {
+            setRouteStatus('Live routing: no current location for JakeMac.', 'error');
+            return;
+        }
+
+        // Stop if close to destination
+        const distToDest = map.distance([origin.lat, origin.lon], [liveRoutingDestination.lat, liveRoutingDestination.lon]);
+        if (distToDest < 50) {
+            setRouteStatus('Arrived at destination.', 'success');
+            stopLiveRouting();
+            return;
+        }
+
+        // Fetch route from current position to stored destination
+        try {
+            const originStr = `${origin.lat.toFixed(5)},${origin.lon.toFixed(5)}`;
+            const destStr = `${liveRoutingDestination.lat.toFixed(5)},${liveRoutingDestination.lon.toFixed(5)}`;
+            const resp = await fetch(`${routingConfig.endpoint}?origin=${originStr}&dest=${destStr}`);
+            if (!resp.ok) {
+                throw new Error(await resp.text() || 'Route request failed');
+            }
+            const data = await resp.json();
+            const route = data.routes && data.routes[0];
+            if (!route || !route.legs || !route.legs[0] || !route.legs[0].points) {
+                throw new Error('No route returned');
+            }
+            const points = route.legs[0].points.map(p => [p.latitude, p.longitude]);
+            drawRouteFromPoints(points);
+            const summary = route.summary || {};
+            setActiveRouteInfo(summary.lengthInMeters, summary.travelTimeInSeconds, 'JakeMac');
+            setRouteStatus('Live route updated.', 'info');
+        } catch (err) {
+            console.error('Live routing error:', err);
+            setRouteStatus(`Live route error: ${err.message}`, 'error');
+        }
+    }
+
+    function stopLiveRouting() {
+        const btn = document.getElementById('live-routing-btn');
+        if (liveRoutingTimer) {
+            clearInterval(liveRoutingTimer);
+            liveRoutingTimer = null;
+        }
+        setRouteStatus('Live routing stopped.', 'muted');
+        if (btn) {
+            btn.innerHTML = '▶️ Live Route (JakeMac)';
+            btn.disabled = false;
+        }
+    }
+
     async function loadPois() {
         if (!selectedOrigin) {
             setRouteStatus('Select a lorry with a stored route before loading POIs.', 'error');
@@ -606,4 +726,5 @@
     window.toggleLiveLocation = toggleLiveLocation;
     window.clearRoute = clearRoute;
     window.loadPois = loadPois;
+    window.toggleLiveRouting = toggleLiveRouting;
 })();
