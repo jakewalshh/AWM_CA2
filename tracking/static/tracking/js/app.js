@@ -22,13 +22,13 @@
     let clearRouteBtn = null;
     let poiLayer = null;
     let activeRouteInfoEl = null;
-    // Live routing for JakeMac
-    const LIVE_ROUTING_LORRY_ID = 2;
-    let liveRoutingTimer = null;
-    let liveRoutingDestination = null;
+    // Live tracking/routing for JakeMac
+    const LIVE_TRACK_LORRY_ID = 2;
+    let liveTrackTimer = null;
+    let liveTrackDestination = null;
+    let latestLiveLocation = null;
 
-    // Track user's live location
-    let liveLocationWatchId = null;
+    // Track user's live location marker
     let userMarker = null;
     let hasCenteredOnUser = false;
 
@@ -157,66 +157,6 @@
             .finally(() => {
                 if (btn) btn.disabled = false;
             });
-    }
-
-    function startLiveLocation() {
-        const btn = document.getElementById('live-location-btn');
-        if (!navigator.geolocation) {
-            alert('Geolocation is not supported by your browser.');
-            return;
-        }
-
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '📡 Starting...';
-        }
-
-        liveLocationWatchId = navigator.geolocation.watchPosition(
-            (position) => {
-                handleLiveLocationUpdate(position.coords.latitude, position.coords.longitude);
-                if (btn) {
-                    btn.innerHTML = '⏸️ Stop Live Location';
-                    btn.disabled = false;
-                }
-            },
-            (err) => {
-                console.warn('Failed to get location:', err);
-                alert('Unable to access your location.');
-                stopLiveLocation();
-            },
-            {
-                enableHighAccuracy: true,
-                maximumAge: 10000,
-                timeout: 20000
-            }
-        );
-    }
-
-    function stopLiveLocation() {
-        const btn = document.getElementById('live-location-btn');
-        if (liveLocationWatchId !== null) {
-            navigator.geolocation.clearWatch(liveLocationWatchId);
-        }
-        liveLocationWatchId = null;
-        hasCenteredOnUser = false;
-
-        if (userMarker) {
-            map.removeLayer(userMarker);
-            userMarker = null;
-        }
-
-        if (btn) {
-            btn.innerHTML = '📡 Start Live Location';
-            btn.disabled = false;
-        }
-    }
-
-    function toggleLiveLocation() {
-        if (liveLocationWatchId !== null) {
-            stopLiveLocation();
-        } else {
-            startLiveLocation();
-        }
     }
 
     function handleLiveLocationUpdate(lat, lon) {
@@ -505,26 +445,35 @@
         });
     }
 
-    // --- Live routing for JakeMac (lorryId = 2) ---
-    async function toggleLiveRouting() {
-        if (liveRoutingTimer) {
-            stopLiveRouting();
+    // --- Combined live location + routing for JakeMac ---
+    async function toggleLiveTrack() {
+        if (liveTrackTimer) {
+            stopLiveTrack();
         } else {
-            await startLiveRouting();
+            await startLiveTrack();
         }
     }
 
-    async function startLiveRouting() {
-        const btn = document.getElementById('live-routing-btn');
+    async function startLiveTrack() {
+        const btn = document.getElementById('live-track-btn');
         if (btn) {
             btn.disabled = true;
             btn.innerHTML = 'Starting...';
         }
-        setRouteStatus('Starting live routing for JakeMac...', 'info');
+        setRouteStatus('Starting live tracking for JakeMac...', 'info');
+
+        if (!navigator.geolocation) {
+            setRouteStatus('Geolocation not supported by your browser.', 'error');
+            if (btn) {
+                btn.disabled = false;
+                btn.innerHTML = '▶️ Live Track (JakeMac)';
+            }
+            return;
+        }
 
         // Load stored destination for JakeMac
         try {
-            const resp = await fetch(`/api/lorry/${LIVE_ROUTING_LORRY_ID}/route/`);
+            const resp = await fetch(`/api/lorry/${LIVE_TRACK_LORRY_ID}/route/`);
             if (resp.status === 204) {
                 throw new Error('No stored route for JakeMac. Set a destination first.');
             }
@@ -535,59 +484,77 @@
             if (!data.destination) {
                 throw new Error('No destination on stored route.');
             }
-            liveRoutingDestination = { lat: data.destination[0], lon: data.destination[1] };
+            liveTrackDestination = { lat: data.destination[0], lon: data.destination[1] };
+            ensureDestinationMarker(liveTrackDestination.lat, liveTrackDestination.lon);
+            selectedOrigin = { lorryId: LIVE_TRACK_LORRY_ID, lorryName: 'JakeMac', lat: null, lon: null };
         } catch (err) {
             console.error(err);
             setRouteStatus(err.message, 'error');
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '▶️ Live Route (JakeMac)';
+                btn.innerHTML = '▶️ Live Track (JakeMac)';
             }
             return;
         }
 
-        await liveRoutingTick();
-        liveRoutingTimer = setInterval(liveRoutingTick, 30000); // recompute every 30s
+        await liveTrackTick();
+        liveTrackTimer = setInterval(liveTrackTick, 10000); // every 10s: update location, then route
 
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '⏸️ Stop Live Route';
+            btn.innerHTML = '⏸️ Stop Live Track';
         }
     }
 
-    async function liveRoutingTick() {
-        if (!liveRoutingDestination) return;
+    function stopLiveTrack() {
+        const btn = document.getElementById('live-track-btn');
+        if (liveTrackTimer) {
+            clearInterval(liveTrackTimer);
+            liveTrackTimer = null;
+        }
+        setRouteStatus('Live tracking stopped.', 'muted');
+        if (btn) {
+            btn.innerHTML = '▶️ Live Track (JakeMac)';
+            btn.disabled = false;
+        }
+    }
 
-        // Get latest location for JakeMac from latest-locations
-        let origin = null;
-        try {
-            const resp = await fetch('/api/latest-locations/');
-            const data = await resp.json();
-            const match = data.find(loc => loc.lorry === LIVE_ROUTING_LORRY_ID);
-            if (match && match.latitude != null && match.longitude != null) {
-                origin = { lat: match.latitude, lon: match.longitude };
+    async function liveTrackTick() {
+        if (!liveTrackDestination) return;
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                const lat = position.coords.latitude;
+                const lon = position.coords.longitude;
+                latestLiveLocation = { lat, lon };
+                handleLiveLocationUpdate(lat, lon);
+                setTimeout(updateRouteFromLatestLocation, 1000);
+            },
+            (err) => {
+                console.warn('Live tracking: failed to get location', err);
+                setRouteStatus('Live tracking: unable to access location.', 'error');
+            },
+            {
+                enableHighAccuracy: true,
+                maximumAge: 5000,
+                timeout: 15000
             }
-        } catch (err) {
-            console.warn('Live routing: failed to load latest location', err);
-        }
+        );
+    }
 
-        if (!origin) {
-            setRouteStatus('Live routing: no current location for JakeMac.', 'error');
-            return;
-        }
+    async function updateRouteFromLatestLocation() {
+        if (!latestLiveLocation || !liveTrackDestination) return;
 
         // Stop if close to destination
-        const distToDest = map.distance([origin.lat, origin.lon], [liveRoutingDestination.lat, liveRoutingDestination.lon]);
+        const distToDest = map.distance([latestLiveLocation.lat, latestLiveLocation.lon], [liveTrackDestination.lat, liveTrackDestination.lon]);
         if (distToDest < 50) {
             setRouteStatus('Arrived at destination.', 'success');
-            stopLiveRouting();
+            stopLiveTrack();
             return;
         }
 
-        // Fetch route from current position to stored destination
+        const originStr = `${latestLiveLocation.lat.toFixed(5)},${latestLiveLocation.lon.toFixed(5)}`;
+        const destStr = `${liveTrackDestination.lat.toFixed(5)},${liveTrackDestination.lon.toFixed(5)}`;
         try {
-            const originStr = `${origin.lat.toFixed(5)},${origin.lon.toFixed(5)}`;
-            const destStr = `${liveRoutingDestination.lat.toFixed(5)},${liveRoutingDestination.lon.toFixed(5)}`;
             const resp = await fetch(`${routingConfig.endpoint}?origin=${originStr}&dest=${destStr}`);
             if (!resp.ok) {
                 throw new Error(await resp.text() || 'Route request failed');
@@ -603,21 +570,8 @@
             setActiveRouteInfo(summary.lengthInMeters, summary.travelTimeInSeconds, 'JakeMac');
             setRouteStatus('Live route updated.', 'info');
         } catch (err) {
-            console.error('Live routing error:', err);
+            console.error('Live route error:', err);
             setRouteStatus(`Live route error: ${err.message}`, 'error');
-        }
-    }
-
-    function stopLiveRouting() {
-        const btn = document.getElementById('live-routing-btn');
-        if (liveRoutingTimer) {
-            clearInterval(liveRoutingTimer);
-            liveRoutingTimer = null;
-        }
-        setRouteStatus('Live routing stopped.', 'muted');
-        if (btn) {
-            btn.innerHTML = '▶️ Live Route (JakeMac)';
-            btn.disabled = false;
         }
     }
 
@@ -742,8 +696,8 @@
     // Expose functions for inline handlers
     window.updateFleet = updateFleet;
     window.toggleCounties = toggleCounties;
-    window.toggleLiveLocation = toggleLiveLocation;
     window.clearRoute = clearRoute;
     window.loadPois = loadPois;
-    window.toggleLiveRouting = toggleLiveRouting;
+    window.toggleLiveTrack = toggleLiveTrack;
+    window.selectLorryFromList = (id, name, lat, lon) => setOrigin(id, name, lat, lon);
 })();
