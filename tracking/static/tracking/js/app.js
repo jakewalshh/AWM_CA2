@@ -3,6 +3,10 @@
     const countiesUrl = config.countiesUrl;
     const liveUpdateConfig = config.liveUpdateConfig || {};
     const routingConfig = { endpoint: config.routingEndpoint || '/api/route/' };
+    function getCsrfToken() {
+        const match = document.cookie.match(/csrftoken=([^;]+)/);
+        return match ? decodeURIComponent(match[1]) : '';
+    }
 
     const map = L.map('map').setView([53.35, -8.0], 7);
 
@@ -23,7 +27,8 @@
     let poiLayer = null;
     let activeRouteInfoEl = null;
     // Live tracking/routing for JakeMac
-    const LIVE_TRACK_LORRY_ID = 2;
+    const LIVE_TRACK_LORRY_ID = config.lorryId || 2;
+    const LIVE_TRACK_LORRY_NAME = config.lorryName || 'JakeMac';
     let liveTrackTimer = null;
     let liveTrackDestination = null;
     let latestLiveLocation = null;
@@ -486,7 +491,7 @@
             }
             liveTrackDestination = { lat: data.destination[0], lon: data.destination[1] };
             ensureDestinationMarker(liveTrackDestination.lat, liveTrackDestination.lon);
-            selectedOrigin = { lorryId: LIVE_TRACK_LORRY_ID, lorryName: 'JakeMac', lat: null, lon: null };
+            selectedOrigin = { lorryId: LIVE_TRACK_LORRY_ID, lorryName: LIVE_TRACK_LORRY_NAME, lat: null, lon: null };
         } catch (err) {
             console.error(err);
             setRouteStatus(err.message, 'error');
@@ -567,7 +572,7 @@
             const points = route.legs[0].points.map(p => [p.latitude, p.longitude]);
             drawRouteFromPoints(points);
             const summary = route.summary || {};
-            setActiveRouteInfo(summary.lengthInMeters, summary.travelTimeInSeconds, 'JakeMac');
+            setActiveRouteInfo(summary.lengthInMeters, summary.travelTimeInSeconds, LIVE_TRACK_LORRY_NAME);
             setRouteStatus('Live route updated.', 'info');
         } catch (err) {
             console.error('Live route error:', err);
@@ -667,7 +672,10 @@
         try {
             await fetch('/api/routes/', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCsrfToken()
+                },
                 body: JSON.stringify({
                     lorry: lorryId,
                     path: points, // [lat, lon]
@@ -683,7 +691,10 @@
 
     async function clearStoredRoute(lorryId) {
         try {
-            await fetch(`/api/lorry/${lorryId}/route/clear/`, { method: 'DELETE' });
+            await fetch(`/api/lorry/${lorryId}/route/clear/`, {
+                method: 'DELETE',
+                headers: { 'X-CSRFToken': getCsrfToken() }
+            });
         } catch (err) {
             console.warn('Failed to clear stored route:', err);
         }
