@@ -89,8 +89,7 @@
             countiesUrl: "{% static 'tracking/data/CountyBordersGeoJSON.geojson' %}",
             liveUpdateConfig: {
                 lorryId: {% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.id }}{% else %}2{% endif %},
-                ingestUrl: '/api/ingest-location/',
-                ingestToken: 'devtoken' // change for production; matches settings.INGEST_TOKEN
+                ingestUrl: '/api/ingest-location/'
             },
             routingEndpoint: '/api/route/',
             lorryId: {% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.id }}{% else %}2{% endif %},

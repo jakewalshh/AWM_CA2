@@ -196,7 +196,7 @@
 
     // Posts the current position to ingest endpoint
     function postLiveLocation(lat, lon) {
-        if (!liveUpdateConfig.ingestUrl || !liveUpdateConfig.ingestToken || !liveUpdateConfig.lorryId) {
+        if (!liveUpdateConfig.ingestUrl || !liveUpdateConfig.lorryId) {
             return;
         }
 
@@ -204,7 +204,7 @@
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-INGEST-TOKEN': liveUpdateConfig.ingestToken
+                'X-CSRFToken': getCsrfToken()
             },
             body: JSON.stringify({
                 lorry_id: liveUpdateConfig.lorryId,

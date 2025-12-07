@@ -69,18 +69,12 @@ def latest_lorry_locations(request):
 
 
 @api_view(['POST'])
-@csrf_exempt  # allow posting without CSRF token; we gate with ingest token instead
-@authentication_classes([])  # disable SessionAuthentication so browser CSRF isn't required (token-only)
-@permission_classes([AllowAny])
+@permission_classes([IsAuthenticated])
 def ingest_location(request):
-    # Accepts a location update for a lorry using an ingest token
+    # Accepts a location update for a lorry using session auth
     """Simple ingest endpoint to post a lorry's latest position."""
-    # Token gate for non-browser clients; set a strong token via env in production
-    token = request.headers.get('X-INGEST-TOKEN')
-    if not settings.INGEST_TOKEN or token != settings.INGEST_TOKEN:
-        return Response({'detail': 'Unauthorized'}, status=401)
 
-    lorry_id = request.data.get('lorry_id') or request.data.get('lorry')
+    lorry_id = request.data.get('lorry_id') or request.data.get('lorry') or (request.user.lorry.id if hasattr(request.user, 'lorry') else None)
     lat = request.data.get('lat') or request.data.get('latitude')
     lon = request.data.get('lon') or request.data.get('longitude')
     county = request.data.get('current_county') or request.data.get('county')
@@ -98,6 +92,8 @@ def ingest_location(request):
         return Response({'detail': 'lat/lon out of range'}, status=400)
 
     lorry = get_object_or_404(Lorry, pk=lorry_id)
+    if not (is_overall_admin(request.user) or is_lorry_owner(request.user, lorry)):
+        return Response({'detail': 'Forbidden'}, status=403)
 
     location = Location.objects.create(
         lorry=lorry,
