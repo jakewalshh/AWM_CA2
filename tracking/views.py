@@ -15,10 +15,12 @@ from .serializers import LorrySerializer, LocationSerializer, LorryRouteSerializ
 
 
 def is_overall_admin(user):
+    # Checks if a user has overall admin privileges
     return user.is_superuser or user.is_staff or user.groups.filter(name='OverallAdmin').exists()
 
 
 def is_lorry_owner(user, lorry: Lorry):
+    # Confirms whether the user owns the given lorry
     if lorry.user_id == user.id:
         return True
     # If the lorry has no user linked yet but the usernames match the lorry
@@ -32,9 +34,11 @@ def is_lorry_owner(user, lorry: Lorry):
 
 class ReadOnlyOrAdmin(BasePermission):
     def has_permission(self, request, view):
+        # Requires authentication for any access
         return request.user and request.user.is_authenticated
 
     def has_object_permission(self, request, view, obj):
+        # Allows reads for all authenticated users; writes only for admins
         if request.method in SAFE_METHODS:
             return True
         return is_overall_admin(request.user)
@@ -52,6 +56,7 @@ class LocationViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def latest_lorry_locations(request):
+    # Returns the newest location per lorry for the live map
     """Get latest location for each lorry for live map"""
     # Get latest location per lorry
     latest_locations = (Location.objects
@@ -68,6 +73,7 @@ def latest_lorry_locations(request):
 @authentication_classes([])  # disable SessionAuthentication so browser CSRF isn't required (token-only)
 @permission_classes([AllowAny])
 def ingest_location(request):
+    # Accepts a location update for a lorry using an ingest token
     """Simple ingest endpoint to post a lorry's latest position."""
     # Token gate for non-browser clients; set a strong token via env in production
     token = request.headers.get('X-INGEST-TOKEN')
@@ -105,6 +111,7 @@ def ingest_location(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def latest_route_for_lorry(request, lorry_id):
+    # Retrieves the most recent stored route for a lorry
     """Fetch the most recent saved route for a lorry."""
     lorry = get_object_or_404(Lorry, pk=lorry_id)
     route = LorryRoute.objects.filter(lorry=lorry).order_by('-created_at').first()
@@ -117,6 +124,7 @@ def latest_route_for_lorry(request, lorry_id):
 @csrf_exempt  # assuming session auth; CSRF disabled for simplicity here
 @permission_classes([IsAuthenticated])
 def save_route(request):
+    # Persists a new route for a lorry if caller is allowed
     """Persist a route for a lorry (overwrites by simply adding a new latest record)."""
     serializer = LorryRouteSerializer(data=request.data)
     if not serializer.is_valid():
@@ -132,6 +140,7 @@ def save_route(request):
 @csrf_exempt  # assuming session auth; CSRF disabled for simplicity here
 @permission_classes([IsAuthenticated])
 def clear_route(request, lorry_id):
+    # Clears all stored routes for a lorry if caller is allowed
     """Delete all stored routes for a lorry (used by clear button)."""
     lorry = get_object_or_404(Lorry, pk=lorry_id)
     if not (is_overall_admin(request.user) or is_lorry_owner(request.user, lorry)):
@@ -143,6 +152,7 @@ def clear_route(request, lorry_id):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def calculate_route(request):
+    # Proxies a TomTom route calculation between two points
     """Proxy TomTom Routing API for a simple point-to-point route."""
     origin = request.query_params.get('origin')  # "lat,lon"
     dest = request.query_params.get('dest')      # "lat,lon"
@@ -173,6 +183,7 @@ def calculate_route(request):
 
 
 def service_worker(request):
+    # Serves the PWA service worker from the static path
     """Serve the service worker from the root scope."""
     sw_path = settings.BASE_DIR / 'tracking' / 'static' / 'tracking' / 'service-worker.js'
     return FileResponse(open(sw_path, 'rb'), content_type='application/javascript')
@@ -181,6 +192,7 @@ def service_worker(request):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def pois_for_lorry(request, lorry_id):
+    # Queries Overpass for POIs along the latest route of a lorry
     """Fetch fuel/toll POIs along a lorry's latest stored route using Overpass."""
     lorry = get_object_or_404(Lorry, pk=lorry_id)
     route = LorryRoute.objects.filter(lorry=lorry).order_by('-created_at').first()

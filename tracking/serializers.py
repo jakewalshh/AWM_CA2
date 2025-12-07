@@ -15,16 +15,20 @@ class LocationSerializer(serializers.ModelSerializer):
     distance_meters = serializers.SerializerMethodField()
     
     def get_latitude(self, obj):
+        # Returns latitude from the Point geometry
         return obj.point.y if obj.point else None
 
     def get_longitude(self, obj):
+        # Returns longitude from the Point geometry
         return obj.point.x if obj.point else None
 
     def get_travel_time_seconds(self, obj):
+        # Pulls latest route travel time for this lorry
         latest_route = obj.lorry.routes.order_by('-created_at').first()
         return latest_route.travel_time_seconds if latest_route else None
 
     def get_distance_meters(self, obj):
+        # Pulls latest route distance for this lorry
         latest_route = obj.lorry.routes.order_by('-created_at').first()
         return latest_route.distance_meters if latest_route else None
 
@@ -45,6 +49,7 @@ class LorryRouteSerializer(serializers.ModelSerializer):
         fields = ['id', 'lorry', 'path', 'destination', 'travel_time_seconds', 'distance_meters', 'created_at']
 
     def to_representation(self, instance):
+        # Outputs geometry as lat/lon arrays with lorry name
         data = super().to_representation(instance)
         # Represent geometry as [lat, lon]
         data['path'] = [[coord[1], coord[0]] for coord in instance.path.coords]
@@ -53,6 +58,7 @@ class LorryRouteSerializer(serializers.ModelSerializer):
         return data
 
     def create(self, validated_data):
+        # Converts incoming lat/lon arrays to geometry fields on create
         path_coords = validated_data.pop('path')
         dest_coords = validated_data.pop('destination')
         line = LineString([(lng, lat) for lat, lng in path_coords], srid=4326)

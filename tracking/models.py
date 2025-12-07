@@ -9,6 +9,7 @@ class Lorry(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name='lorry')
 
     def __str__(self):
+        # Returns the lorry name for admin displays
         return self.name
 
 
@@ -19,6 +20,7 @@ class Location(models.Model):
     current_county = models.CharField(max_length=100, blank=True, null=True)
 
     def __str__(self):
+        #  location string for admin displays
         return f"Location of {self.lorry.name} at {self.timestamp}"
 
 
@@ -34,4 +36,5 @@ class LorryRoute(models.Model):
         get_latest_by = 'created_at'
 
     def __str__(self):
+        # Shows which lorry the route belongs to with timestamp
         return f"Route for {self.lorry.name} @ {self.created_at}"

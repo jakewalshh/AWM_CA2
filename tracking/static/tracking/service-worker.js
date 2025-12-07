@@ -8,6 +8,7 @@ const ASSETS = [
   '/static/tracking/icons/lorry_512.png?v=2'
 ];
 
+// Checks if a request targets a cacheable static asset
 function isStaticAsset(request) {
   const url = new URL(request.url);
   if (!url.pathname.startsWith('/static/')) return false;
@@ -15,6 +16,7 @@ function isStaticAsset(request) {
 }
 
 self.addEventListener('install', (event) => {
+  // Pre-caches core assets on install
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(ASSETS))
@@ -23,6 +25,7 @@ self.addEventListener('install', (event) => {
 });
 
 self.addEventListener('activate', (event) => {
+  // Cleans up old caches and takes control
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(keys.filter(k => k !== CACHE_NAME).map(k => caches.delete(k)))
@@ -31,6 +34,7 @@ self.addEventListener('activate', (event) => {
 });
 
 self.addEventListener('fetch', (event) => {
+  // Routes requests between network and cache
   if (event.request.method !== 'GET') return;
   const url = new URL(event.request.url);
   // Always go to network for API calls and admin pages to avoid stale data

@@ -3,6 +3,7 @@
     const countiesUrl = config.countiesUrl;
     const liveUpdateConfig = config.liveUpdateConfig || {};
     const routingConfig = { endpoint: config.routingEndpoint || '/api/route/' };
+    // Grabs the CSRF token from cookies for authenticated POST/DELETE
     function getCsrfToken() {
         const match = document.cookie.match(/csrftoken=([^;]+)/);
         return match ? decodeURIComponent(match[1]) : '';
@@ -26,9 +27,9 @@
     let clearRouteBtn = null;
     let poiLayer = null;
     let activeRouteInfoEl = null;
-    // Live tracking/routing for JakeMac
+    // Live tracking/routing for the current lorry (falls back to id 2)
     const LIVE_TRACK_LORRY_ID = config.lorryId || 2;
-    const LIVE_TRACK_LORRY_NAME = config.lorryName || 'JakeMac';
+    const LIVE_TRACK_LORRY_NAME = config.lorryName || 'Your Lorry';
     let liveTrackTimer = null;
     let liveTrackDestination = null;
     let latestLiveLocation = null;
@@ -37,6 +38,7 @@
     let userMarker = null;
     let hasCenteredOnUser = false;
 
+    // Pulls latest lorry locations and refreshes markers/list
     function updateFleet() {
         const refreshBtn = document.getElementById('refresh-btn');
         if (refreshBtn) {
@@ -113,6 +115,7 @@
             });
     }
 
+    // loads county GeoJSON data
     function loadCountyData() {
         if (!countiesUrl) {
             return Promise.reject(new Error('No counties data URL configured.'));
@@ -123,6 +126,7 @@
         return countiesDataPromise;
     }
 
+    // Shows or hides county boundary layer
     function toggleCounties() {
         const btn = document.getElementById('toggle-counties-btn');
         if (countiesVisible) {
@@ -164,6 +168,7 @@
             });
     }
 
+    // Sends live location to server and updates UI
     function handleLiveLocationUpdate(lat, lon) {
         const latLng = [lat, lon];
 
@@ -189,6 +194,7 @@
         postLiveLocation(lat, lon);
     }
 
+    // Posts the current position to ingest endpoint
     function postLiveLocation(lat, lon) {
         if (!liveUpdateConfig.ingestUrl || !liveUpdateConfig.ingestToken || !liveUpdateConfig.lorryId) {
             return;
@@ -210,6 +216,7 @@
         });
     }
 
+    // Binds click handlers to a lorry marker and list item
     function attachLorryClick(lorryId, lorryName, marker) {
         marker.off('click');
         marker.on('click', () => {
@@ -218,6 +225,7 @@
         });
     }
 
+    // Handles map click for choosing destination or clearing selection
     function handleMapClick(e) {
         if (!mapClickActive) {
             // Not in destination set mode: hide current route/POIs
@@ -231,6 +239,7 @@
         disableMapClick();
     }
 
+    // Selects a lorry as origin and attempts to load a stored route
     function setOrigin(lorryId, lorryName, lat, lon) {
         // Clear drawn layers for previous selection
         clearDrawnRoute();
@@ -242,6 +251,7 @@
         loadStoredRoute(lorryId, lorryName);
     }
 
+    // Sets destination point and triggers route fetch
     function setDestination(lat, lon) {
         selectedDestination = { lat, lon };
         ensureDestinationMarker(lat, lon);
@@ -249,6 +259,7 @@
         tryFetchRoute();
     }
 
+    // Kicks off a route fetch when origin and destination are ready
     function tryFetchRoute() {
         if (!selectedOrigin || !selectedDestination) {
             return;
@@ -256,6 +267,7 @@
         fetchRoute(selectedOrigin, selectedDestination);
     }
 
+    // Calls backend to calculate route via TomTom 
     async function fetchRoute(origin, destination) {
         setRouteStatus('Fetching route...', 'info');
 
@@ -280,6 +292,7 @@
         }
     }
 
+    // Renders a TomTom route response and saves it
     function drawRoute(route) {
         const points = route.legs[0].points.map(p => [p.latitude, p.longitude]);
         drawRouteFromPoints(points);
@@ -300,6 +313,7 @@
         enableClearButton();
     }
 
+    // Clears the active route and optionally keeps the origin selected
     function clearRoute(keepOrigin = false) {
         if (routeLine) {
             map.removeLayer(routeLine);
@@ -328,6 +342,7 @@
         }
     }
 
+    // Removes any drawn route and destination marker from the map
     function clearDrawnRoute() {
         if (routeLine) {
             map.removeLayer(routeLine);
@@ -344,6 +359,7 @@
         clearActiveRouteInfo();
     }
 
+    // Draws a polyline for a list of lat/lon points
     function drawRouteFromPoints(points) {
         if (routeLine) {
             map.removeLayer(routeLine);
@@ -354,6 +370,7 @@
         enableClearButton();
     }
 
+    // Removes POI markers from the map
     function clearPoiLayer() {
         if (poiLayer) {
             map.removeLayer(poiLayer);
@@ -361,12 +378,14 @@
         }
     }
 
+    // Turns on map click handler for destination selection
     function enableMapClick() {
         map.off('click', handleMapClick);
         map.on('click', handleMapClick);
         mapClickActive = true;
     }
 
+    // Turns off map click handler
     function disableMapClick() {
         if (mapClickActive) {
             map.off('click', handleMapClick);
@@ -374,6 +393,7 @@
         }
     }
 
+    // Enables the clear route button
     function enableClearButton() {
         if (!clearRouteBtn) {
             clearRouteBtn = document.getElementById('clear-route-btn');
@@ -383,6 +403,7 @@
         }
     }
 
+    // Disables the clear route button
     function disableClearButton() {
         if (!clearRouteBtn) {
             clearRouteBtn = document.getElementById('clear-route-btn');
@@ -392,6 +413,7 @@
         }
     }
 
+    // Updates the route status message with a tone
     function setRouteStatus(text, tone = 'muted') {
         const el = document.getElementById('route-status');
         if (!el) return;
@@ -401,6 +423,7 @@
         el.textContent = text;
     }
 
+    // Places or moves the destination marker on the map
     function ensureDestinationMarker(lat, lon) {
         if (destinationMarker) {
             destinationMarker.setLatLng([lat, lon]);
@@ -416,6 +439,7 @@
         }
     }
 
+    // Shows distance and ETA for the active route
     function setActiveRouteInfo(distanceMeters, travelSeconds, lorryName) {
         if (!activeRouteInfoEl) {
             activeRouteInfoEl = document.getElementById('active-route-info');
@@ -431,6 +455,7 @@
         activeRouteInfoEl.style.display = 'block';
     }
 
+    // Hides the route info panel
     function clearActiveRouteInfo() {
         if (!activeRouteInfoEl) {
             activeRouteInfoEl = document.getElementById('active-route-info');
@@ -450,7 +475,8 @@
         });
     }
 
-    // --- Combined live location + routing for JakeMac ---
+    // --- Combined live location + routing for configured lorry ---
+    // Toggles the combined live tracking and routing loop
     async function toggleLiveTrack() {
         if (liveTrackTimer) {
             stopLiveTrack();
@@ -459,28 +485,29 @@
         }
     }
 
+    // Starts live location updates and periodic route refresh
     async function startLiveTrack() {
         const btn = document.getElementById('live-track-btn');
         if (btn) {
             btn.disabled = true;
             btn.innerHTML = 'Starting...';
         }
-        setRouteStatus('Starting live tracking for JakeMac...', 'info');
+        setRouteStatus('Starting live tracking...', 'info');
 
         if (!navigator.geolocation) {
             setRouteStatus('Geolocation not supported by your browser.', 'error');
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '▶️ Live Track (JakeMac)';
+                btn.innerHTML = '▶️ Live Track';
             }
             return;
         }
 
-        // Load stored destination for JakeMac
+        // Load stored destination for configured lorry
         try {
             const resp = await fetch(`/api/lorry/${LIVE_TRACK_LORRY_ID}/route/`);
             if (resp.status === 204) {
-                throw new Error('No stored route for JakeMac. Set a destination first.');
+                throw new Error('No stored route. Set a destination first.');
             }
             if (!resp.ok) {
                 throw new Error(await resp.text() || 'Failed to load stored route');
@@ -497,7 +524,7 @@
             setRouteStatus(err.message, 'error');
             if (btn) {
                 btn.disabled = false;
-                btn.innerHTML = '▶️ Live Track (JakeMac)';
+                btn.innerHTML = '▶️ Live Track';
             }
             return;
         }
@@ -511,6 +538,7 @@
         }
     }
 
+    // Stops live tracking timers and resets UI
     function stopLiveTrack() {
         const btn = document.getElementById('live-track-btn');
         if (liveTrackTimer) {
@@ -519,11 +547,12 @@
         }
         setRouteStatus('Live tracking stopped.', 'muted');
         if (btn) {
-            btn.innerHTML = '▶️ Live Track (JakeMac)';
+            btn.innerHTML = '▶️ Live Track';
             btn.disabled = false;
         }
     }
 
+    // Performs one live location read and schedules route refresh
     async function liveTrackTick() {
         if (!liveTrackDestination) return;
         navigator.geolocation.getCurrentPosition(
@@ -546,6 +575,7 @@
         );
     }
 
+    // Recalculates the route from the latest live position
     async function updateRouteFromLatestLocation() {
         if (!latestLiveLocation || !liveTrackDestination) return;
 
@@ -580,6 +610,7 @@
         }
     }
 
+    // Loads and displays POIs for the selected lorry route
     async function loadPois() {
         if (!selectedOrigin) {
             setRouteStatus('Select a lorry with a stored route before loading POIs.', 'error');
@@ -638,6 +669,7 @@
         }
     }
 
+    // Fetches and renders a stored route for a lorry
     async function loadStoredRoute(lorryId, lorryName) {
         try {
             const resp = await fetch(`/api/lorry/${lorryId}/route/`);
@@ -668,6 +700,7 @@
         }
     }
 
+    // Saves the current route to the server
     async function saveRouteToServer(lorryId, points, destination, summary) {
         try {
             await fetch('/api/routes/', {
@@ -689,6 +722,7 @@
         }
     }
 
+    // Clears any stored route for a lorry on the server
     async function clearStoredRoute(lorryId) {
         try {
             await fetch(`/api/lorry/${lorryId}/route/clear/`, {

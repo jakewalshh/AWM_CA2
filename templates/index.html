@@ -59,7 +59,7 @@
                         🗺️ Show County Borders
                     </button>
                     <button class="btn btn-outline-success ms-2" onclick="toggleLiveTrack()" id="live-track-btn">
-                        ▶️ Live Track (JakeMac)
+                        ▶️ Live Track
                     </button>
                     <button class="btn btn-outline-danger ms-2" onclick="clearRoute()" id="clear-route-btn" disabled>
                         ❌ Clear Route
@@ -86,7 +86,7 @@
             },
             routingEndpoint: '/api/route/',
             lorryId: {% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.id }}{% else %}2{% endif %},
-            lorryName: "{% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.name }}{% else %}JakeMac{% endif %}"
+            lorryName: "{% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.name }}{% else %}Your Lorry{% endif %}"
         };
     </script>
     <script src="{% static 'tracking/js/app.js' %}"></script>
