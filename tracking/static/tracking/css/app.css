@@ -1,4 +1,88 @@
-#map { height: 75vh; width: 100%; border: 1px solid #ddd; }
-.lorry-card { cursor: pointer; }
-.lorry-card:hover { background-color: #e9ecef; }
-body { padding-top: 20px; }
+#map {
+  height: 70vh;
+  width: 100%;
+  border-radius: 12px;
+  border: 1px solid #e3e7ee;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+}
+
+body {
+  padding-top: 20px;
+  background: linear-gradient(135deg, #f7f9fc 0%, #eef2f7 100%);
+  color: #0f172a;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+.top-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 0;
+}
+
+.badge-pill {
+  border-radius: 999px;
+}
+
+.card {
+  border: none;
+  border-radius: 14px;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+}
+
+.card-header {
+  border-bottom: 1px solid #eef2f7;
+  background: #ffffff;
+}
+
+.card-footer {
+  background: #f9fbff;
+  border-top: 1px solid #eef2f7;
+}
+
+.list-group-item {
+  border: none;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.lorry-card {
+  cursor: pointer;
+  transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.lorry-card:hover {
+  background-color: #f3f6fb;
+  transform: translateY(-2px);
+}
+
+.lorry-marker {
+  font-size: 18px;
+}
+
+.control-bar button {
+  min-width: 140px;
+}
+
+#route-status {
+  background: #f8fafc;
+  border: 1px solid #e3e7ee;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+#active-route-info {
+  border-radius: 10px;
+  border: 1px solid #bee3f8;
+}
+
+.btn-outline-primary,
+.btn-outline-secondary,
+.btn-outline-success,
+.btn-outline-danger,
+.btn-outline-info {
+  border-width: 2px;
+}
+
+.map-shell {
+  padding: 12px;
+}

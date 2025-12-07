@@ -13,28 +13,30 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
-    <div class="container-fluid">
+    <div class="container-fluid px-3 px-md-4">
         <div class="row mb-3">
-            <div class="col-12">
-                <h1 class="text-primary">🚛 Lorry Fleet Tracker</h1>
-                <p class="text-muted">Live tracking across Ireland with county boundaries</p>
-                <div class="d-flex justify-content-end">
+            <div class="col-12 top-bar">
+                <div>
+                    <h1 class="text-primary mb-0">🚛 Lorry Fleet Tracker</h1>
+                    <p class="text-muted mb-0">Live fleet visibility, routing, and POIs</p>
+                </div>
+                <div class="text-end">
                     {% if user.is_authenticated %}
-                        <span class="me-2">Logged in as {{ user.username }}</span>
-                        <a href="{% url 'logout' %}">Logout</a>
+                        <span class="me-2 badge bg-light text-dark">Logged in as {{ user.username }}</span>
+                        <a href="{% url 'logout' %}" class="text-decoration-none">Logout</a>
                     {% else %}
                         <span class="me-2 text-muted">Not logged in</span>
-                        <a href="{% url 'login' %}">Login</a>
+                        <a href="{% url 'login' %}" class="text-decoration-none">Login</a>
                     {% endif %}
                 </div>
             </div>
         </div>
         
         <div class="row">
-            <div class="col-md-3">
+            <div class="col-md-3 mb-3">
                 <div class="card">
                     <div class="card-header">
-                        <h5><i class="bi bi-truck"></i> Fleet Status</h5>
+                        <h5 class="mb-0">Fleet Status</h5>
                     </div>
                     <div class="card-body p-0">
                         <div id="lorry-list" class="list-group list-group-flush">
@@ -49,27 +51,33 @@
                 </div>
             </div>
             
-            <div class="col-md-9">
-                <div id="map"></div>
-                <div class="mt-2 text-center">
-                    <button class="btn btn-outline-primary" onclick="updateFleet()" id="refresh-btn">
-                        🔄 Refresh Fleet
-                    </button>
-                    <button class="btn btn-outline-secondary ms-2" onclick="toggleCounties()" id="toggle-counties-btn">
-                        🗺️ Show County Borders
-                    </button>
-                    <button class="btn btn-outline-success ms-2" onclick="toggleLiveTrack()" id="live-track-btn">
-                        ▶️ Live Track
-                    </button>
-                    <button class="btn btn-outline-danger ms-2" onclick="clearRoute()" id="clear-route-btn" disabled>
-                        ❌ Clear Route
-                    </button>
-                    <button class="btn btn-outline-info ms-2" onclick="loadPois()" id="load-poi-btn">
-                        ⛽️🅿️ Show POIs
-                    </button>
-                    <div id="active-route-info" class="alert alert-info mt-2 p-2 d-none"></div>
-                    <div class="small text-muted mt-2" id="route-status">
-                        Click a lorry to set the origin, then click the map to set a destination.
+            <div class="col-md-9 mb-3">
+                <div class="card">
+                    <div class="card-body map-shell">
+                        <div id="map"></div>
+                    </div>
+                    <div class="card-footer">
+                        <div class="d-flex flex-wrap gap-2 justify-content-center control-bar">
+                            <button class="btn btn-outline-primary" onclick="updateFleet()" id="refresh-btn">
+                                🔄 Refresh Fleet
+                            </button>
+                            <button class="btn btn-outline-secondary" onclick="toggleCounties()" id="toggle-counties-btn">
+                                🗺️ Show County Borders
+                            </button>
+                            <button class="btn btn-outline-success" onclick="toggleLiveTrack()" id="live-track-btn">
+                                ▶️ Live Track
+                            </button>
+                            <button class="btn btn-outline-danger" onclick="clearRoute()" id="clear-route-btn" disabled>
+                                ❌ Clear Route
+                            </button>
+                            <button class="btn btn-outline-info" onclick="loadPois()" id="load-poi-btn">
+                                ⛽️🅿️ Show POIs
+                            </button>
+                        </div>
+                        <div id="active-route-info" class="alert alert-info mt-3 p-2 d-none"></div>
+                        <div class="small text-muted mt-2" id="route-status">
+                            Click a lorry to set the origin, then click the map to set a destination.
+                        </div>
                     </div>
                 </div>
             </div>
