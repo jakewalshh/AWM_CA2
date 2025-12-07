@@ -18,6 +18,15 @@
             <div class="col-12">
                 <h1 class="text-primary">🚛 Lorry Fleet Tracker</h1>
                 <p class="text-muted">Live tracking across Ireland with county boundaries</p>
+                <div class="d-flex justify-content-end">
+                    {% if user.is_authenticated %}
+                        <span class="me-2">Logged in as {{ user.username }}</span>
+                        <a href="{% url 'logout' %}">Logout</a>
+                    {% else %}
+                        <span class="me-2 text-muted">Not logged in</span>
+                        <a href="{% url 'login' %}">Login</a>
+                    {% endif %}
+                </div>
             </div>
         </div>
         
@@ -71,11 +80,13 @@
         window.appConfig = {
             countiesUrl: "{% static 'tracking/data/CountyBordersGeoJSON.geojson' %}",
             liveUpdateConfig: {
-                lorryId: 2,
+                lorryId: {% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.id }}{% else %}2{% endif %},
                 ingestUrl: '/api/ingest-location/',
                 ingestToken: 'devtoken' // change for production; matches settings.INGEST_TOKEN
             },
-            routingEndpoint: '/api/route/'
+            routingEndpoint: '/api/route/',
+            lorryId: {% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.id }}{% else %}2{% endif %},
+            lorryName: "{% if request.user.is_authenticated and request.user.lorry %}{{ request.user.lorry.name }}{% else %}JakeMac{% endif %}"
         };
     </script>
     <script src="{% static 'tracking/js/app.js' %}"></script>

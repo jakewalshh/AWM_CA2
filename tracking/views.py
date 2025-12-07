@@ -1,7 +1,7 @@
 from rest_framework import viewsets
 from rest_framework.decorators import api_view, authentication_classes, permission_classes
 from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS, BasePermission
 from django.conf import settings
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
@@ -13,15 +13,44 @@ from math import ceil
 from .models import Lorry, Location, LorryRoute
 from .serializers import LorrySerializer, LocationSerializer, LorryRouteSerializer
 
+
+def is_overall_admin(user):
+    return user.is_superuser or user.is_staff or user.groups.filter(name='OverallAdmin').exists()
+
+
+def is_lorry_owner(user, lorry: Lorry):
+    if lorry.user_id == user.id:
+        return True
+    # If the lorry has no user linked yet but the usernames match the lorry
+    # name, auto-link on first use so owners can manage their own lorry.
+    if lorry.user_id is None and user.username == lorry.name:
+        lorry.user = user
+        lorry.save(update_fields=['user'])
+        return True
+    return False
+
+
+class ReadOnlyOrAdmin(BasePermission):
+    def has_permission(self, request, view):
+        return request.user and request.user.is_authenticated
+
+    def has_object_permission(self, request, view, obj):
+        if request.method in SAFE_METHODS:
+            return True
+        return is_overall_admin(request.user)
+
 class LorryViewSet(viewsets.ModelViewSet):
     queryset = Lorry.objects.all()
     serializer_class = LorrySerializer
+    permission_classes = [ReadOnlyOrAdmin]
 
 class LocationViewSet(viewsets.ModelViewSet):
     queryset = Location.objects.all()
     serializer_class = LocationSerializer
+    permission_classes = [ReadOnlyOrAdmin]
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def latest_lorry_locations(request):
     """Get latest location for each lorry for live map"""
     # Get latest location per lorry
@@ -74,6 +103,7 @@ def ingest_location(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def latest_route_for_lorry(request, lorry_id):
     """Fetch the most recent saved route for a lorry."""
     lorry = get_object_or_404(Lorry, pk=lorry_id)
@@ -84,30 +114,34 @@ def latest_route_for_lorry(request, lorry_id):
 
 
 @api_view(['POST'])
-@csrf_exempt
-@authentication_classes([])
-@permission_classes([AllowAny])
+@csrf_exempt  # assuming session auth; CSRF disabled for simplicity here
+@permission_classes([IsAuthenticated])
 def save_route(request):
     """Persist a route for a lorry (overwrites by simply adding a new latest record)."""
     serializer = LorryRouteSerializer(data=request.data)
-    if serializer.is_valid():
-        serializer.save()
-        return Response(serializer.data, status=201)
-    return Response(serializer.errors, status=400)
+    if not serializer.is_valid():
+        return Response(serializer.errors, status=400)
+    lorry = serializer.validated_data['lorry']
+    if not (is_overall_admin(request.user) or is_lorry_owner(request.user, lorry)):
+        return Response({'detail': 'Forbidden'}, status=403)
+    serializer.save()
+    return Response(serializer.data, status=201)
 
 
 @api_view(['DELETE'])
-@csrf_exempt
-@authentication_classes([])
-@permission_classes([AllowAny])
+@csrf_exempt  # assuming session auth; CSRF disabled for simplicity here
+@permission_classes([IsAuthenticated])
 def clear_route(request, lorry_id):
     """Delete all stored routes for a lorry (used by clear button)."""
     lorry = get_object_or_404(Lorry, pk=lorry_id)
+    if not (is_overall_admin(request.user) or is_lorry_owner(request.user, lorry)):
+        return Response({'detail': 'Forbidden'}, status=403)
     LorryRoute.objects.filter(lorry=lorry).delete()
     return Response(status=204)
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def calculate_route(request):
     """Proxy TomTom Routing API for a simple point-to-point route."""
     origin = request.query_params.get('origin')  # "lat,lon"
@@ -145,6 +179,7 @@ def service_worker(request):
 
 
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def pois_for_lorry(request, lorry_id):
     """Fetch fuel/toll POIs along a lorry's latest stored route using Overpass."""
     lorry = get_object_or_404(Lorry, pk=lorry_id)

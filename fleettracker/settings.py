@@ -143,3 +143,7 @@ TOMTOM_API_KEY = os.getenv('TOMTOM_API_KEY', '')
 
 # Overpass API endpoint for POIs
 OVERPASS_URL = os.getenv('OVERPASS_URL', 'https://overpass-api.de/api/interpreter')
+
+# Auth redirects
+LOGIN_REDIRECT_URL = '/'
+LOGOUT_REDIRECT_URL = '/'
