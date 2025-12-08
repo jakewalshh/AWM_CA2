@@ -33,6 +33,9 @@
     let liveTrackTimer = null;
     let liveTrackDestination = null;
     let latestLiveLocation = null;
+    let liveLocationWatchId = null;
+    let lastFleetData = [];
+    let highlightedLorryId = null;
 
     // Track user's live location marker
     let userMarker = null;
@@ -49,6 +52,7 @@
         fetch('/api/latest-locations/')
             .then(response => response.json())
             .then(data => {
+                lastFleetData = data || [];
                 let listHtml = '';
                 data.forEach(location => {
                     const lat = location.latitude;
@@ -192,6 +196,131 @@
         }
 
         postLiveLocation(lat, lon);
+    }
+
+    // Finds and highlights the closest lorry to the user (excluding own lorry)
+    async function findClosestLorry() {
+        if (!lastFleetData || lastFleetData.length === 0) {
+            setRouteStatus('No lorry locations available yet.', 'error');
+            return;
+        }
+        let userPos = null;
+        if (latestLiveLocation) {
+            userPos = latestLiveLocation;
+        } else if (userMarker) {
+            const ll = userMarker.getLatLng();
+            userPos = { lat: ll.lat, lon: ll.lng };
+        } else if (navigator.geolocation) {
+            try {
+                userPos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(
+                        pos => resolve({ lat: pos.coords.latitude, lon: pos.coords.longitude }),
+                        err => reject(err),
+                        { enableHighAccuracy: true, timeout: 10000 }
+                    );
+                });
+                handleLiveLocationUpdate(userPos.lat, userPos.lon);
+            } catch (err) {
+                setRouteStatus('Location access denied. Cannot find closest lorry.', 'error');
+                return;
+            }
+        }
+        if (!userPos) {
+            setRouteStatus('No user location available.', 'error');
+            return;
+        }
+
+        const myLorryId = LIVE_TRACK_LORRY_ID;
+        let closest = null;
+        let closestDist = Infinity;
+        lastFleetData.forEach(loc => {
+            if (loc.lorry === myLorryId) return;
+            if (loc.latitude == null || loc.longitude == null) return;
+            const d = map.distance([userPos.lat, userPos.lon], [loc.latitude, loc.longitude]);
+            if (d < closestDist) {
+                closestDist = d;
+                closest = loc;
+            }
+        });
+
+        if (!closest) {
+            setRouteStatus('No other lorries to compare.', 'info');
+            return;
+        }
+
+        highlightLorry(closest.lorry);
+        setRouteStatus(`Closest lorry: ${closest.lorry_name} (~${Math.round(closestDist)} m).`, 'info');
+        if (lorryMarkers[closest.lorry]) {
+            lorryMarkers[closest.lorry].openPopup();
+            map.panTo(lorryMarkers[closest.lorry].getLatLng());
+        }
+    }
+
+    // Highlights a lorry marker and resets previous highlight
+    function highlightLorry(lorryId) {
+        if (highlightedLorryId && lorryMarkers[highlightedLorryId]) {
+            lorryMarkers[highlightedLorryId].setIcon(L.divIcon({
+                className: 'lorry-marker',
+                html: '🚛',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            }));
+        }
+        if (lorryMarkers[lorryId]) {
+            lorryMarkers[lorryId].setIcon(L.divIcon({
+                className: 'lorry-marker',
+                html: '🎯',
+                iconSize: [30, 30],
+                iconAnchor: [15, 15]
+            }));
+            highlightedLorryId = lorryId;
+        }
+    }
+
+    // Toggles live location streaming without routing
+    function toggleLiveLocation() {
+        if (liveLocationWatchId !== null) {
+            stopLiveLocation();
+        } else {
+            startLiveLocation();
+        }
+    }
+
+    // Starts browser geolocation watch and posts updates
+    function startLiveLocation() {
+        const btn = document.getElementById('live-location-btn');
+        if (!navigator.geolocation) {
+            setRouteStatus('Geolocation not supported by your browser.', 'error');
+            return;
+        }
+        setRouteStatus('Live location on. Sharing your position.', 'info');
+        if (btn) {
+            btn.innerHTML = '⏸️ Live Location';
+        }
+        liveLocationWatchId = navigator.geolocation.watchPosition(
+            (pos) => {
+                handleLiveLocationUpdate(pos.coords.latitude, pos.coords.longitude);
+            },
+            (err) => {
+                console.warn('Live location watch error', err);
+                setRouteStatus('Live location error; please allow location access.', 'error');
+                stopLiveLocation();
+            },
+            { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 }
+        );
+    }
+
+    // Stops geolocation watch
+    function stopLiveLocation() {
+        const btn = document.getElementById('live-location-btn');
+        if (liveLocationWatchId !== null) {
+            navigator.geolocation.clearWatch(liveLocationWatchId);
+            liveLocationWatchId = null;
+        }
+        setRouteStatus('Live location off.', 'muted');
+        if (btn) {
+            btn.innerHTML = '📡 Live Location';
+        }
     }
 
     // Posts the current position to ingest endpoint
@@ -743,6 +872,8 @@
     window.toggleCounties = toggleCounties;
     window.clearRoute = clearRoute;
     window.loadPois = loadPois;
+    window.toggleLiveLocation = toggleLiveLocation;
+    window.findClosestLorry = findClosestLorry;
     window.toggleLiveTrack = toggleLiveTrack;
     window.selectLorryFromList = (id, name, lat, lon) => setOrigin(id, name, lat, lon);
 })();
