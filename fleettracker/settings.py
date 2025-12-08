@@ -135,9 +135,6 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Simple token for ingest endpoint (override in env for any deployed environment)
-INGEST_TOKEN = os.getenv('INGEST_TOKEN', 'devtoken')
-
 # TomTom Routing API key (set TOMTOM_API_KEY in env)
 TOMTOM_API_KEY = os.getenv('TOMTOM_API_KEY', '')
 
