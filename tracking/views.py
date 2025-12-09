@@ -117,7 +117,7 @@ def latest_route_for_lorry(request, lorry_id):
 
 
 @api_view(['POST'])
-@csrf_exempt  # assuming session auth; CSRF disabled for simplicity here
+@csrf_exempt  
 @permission_classes([IsAuthenticated])
 def save_route(request):
     # Persists a new route for a lorry if caller is allowed
@@ -195,7 +195,7 @@ def pois_for_lorry(request, lorry_id):
     if not route:
         return Response({}, status=204)
 
-    # Hard-coded Overpass search
+    # Overpass search
     radius = 2000  # meters
     query_templates = [
         'node["amenity"="fuel"](around:{radius},{lat},{lon});',
