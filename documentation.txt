@@ -1,0 +1,92 @@
+Project Overview
+This is a Django + GeoDjango fleet tracker with a Leaflet frontend. It tracks multiple lorries, stores their locations and routes in PostGIS, uses TomTom for routing, queries Overpass for POIs, and serves a PWA-enabled map UI behind Nginx/gunicorn. Users log in per-lorry (or as admins) and can view routes/POIs, save/clear routes, live-track their own lorry, and find the closest other lorry.
+
+Core Data Model (tracking/models.py)
+- Lorry: a vehicle with an optional one-to-one User link.
+- Location: latest points for each lorry (PointField, SRID 4326, timestamped, optional county).
+- LorryRoute: stored route per lorry (LineString path, destination Point, optional distance/travel time, timestamped).
+
+Backend Functions (tracking/views.py)
+- is_overall_admin(user): True if staff/superuser or in OverallAdmin group (used for write permissions).
+- is_lorry_owner(user, lorry): True if user matches lorry.user; also auto-links a lorry to a user with the same username if not linked yet.
+- ReadOnlyOrAdmin: DRF permission; authenticated users can read, only admins can write on viewsets.
+- LorryViewSet / LocationViewSet: CRUD for lorries/locations with ReadOnlyOrAdmin permissions.
+- latest_lorry_locations (GET /api/latest-locations/): Auth required. Selects the most recent Location per lorry (distinct on lorry ordered by timestamp), serializes to JSON (lat/lon, lorry id/name, timestamp, latest route distance/ETA) for the map refresh.
+  Data flow: DB Location -> serializer adds lat/lon + latest route stats -> JSON to client -> client rebuilds markers/list.
+- ingest_location (POST /api/ingest-location/): Auth + CSRF. Accepts lorry_id (or user.lorry), lat, lon, county; validates bounds; ensures caller is admin or lorry owner; stores Location(point=lon/lat, county). Returns the created location JSON.
+  Data flow: client geolocation -> POST JSON -> Django validates/authorizes -> DB insert -> serialized response.
+- latest_route_for_lorry (GET /api/lorry/<id>/route/): Auth. Returns most recent LorryRoute for the lorry or 204 if none.
+  Data flow: DB latest route -> serializer outputs path/destination as [lat,lon] arrays + metadata -> JSON.
+- save_route (POST /api/routes/): Auth. Body includes lorry id, path [[lat,lon]...], destination [lat,lon], optional distance/travel_time. Only admin or lorry owner can save. Saves a new LorryRoute.
+  Data flow: client TomTom result -> POST -> serializer converts arrays to LineString/Point -> DB insert.
+- clear_route (DELETE /api/lorry/<id>/route/clear/): Auth. Only admin or lorry owner. Deletes all routes for that lorry. Returns 204.
+- calculate_route (GET /api/route/?origin=lat,lon&dest=lat,lon): Auth. Proxies TomTom Routing API with traffic and polyline; returns TomTom JSON or 502 on error.
+  Data flow: client origin/dest -> Django proxy -> TomTom -> raw TomTom JSON -> client draws route and may save it.
+- service_worker (GET /service-worker.js): Serves the SW file for PWA scope.
+- pois_for_lorry (GET /api/lorry/<id>/pois/): Auth. Loads latest route, samples up to 25 points, builds Overpass QL for fuel and toll_booth within 2000m, posts to Overpass, dedupes, returns GeoJSON FeatureCollection.
+  Data flow: DB route coords -> sampled points -> Overpass POST -> JSON -> filtered features -> client renders markers.
+
+Frontend Map Logic (tracking/static/tracking/js/app.js)
+- getCsrfToken(): reads csrftoken cookie for authenticated POST/DELETE.
+- updateFleet(): fetches /api/latest-locations/, updates lorry markers/popups/list; stores lastFleetData for closest-lorry feature; runs every 15s.
+  Data flow: API JSON -> markers/list -> in-memory lastFleetData.
+- loadCountyData()/toggleCounties(): lazy-loads GeoJSON borders and toggles a Leaflet layer.
+- handleLiveLocationUpdate(lat, lon): updates/creates userMarker, recenters once, posts to ingest_location, keeps latestLiveLocation.
+  Data flow: browser geolocation -> UI marker -> POST ingest -> DB.
+- postLiveLocation(lat, lon): POSTs JSON (lorry_id, lat, lon) with CSRF to ingest endpoint.
+- toggleLiveLocation()/startLiveLocation()/stopLiveLocation(): starts/stops navigator.geolocation.watchPosition, pipes updates through handleLiveLocationUpdate, updates button text/status.
+- findClosestLorry(): uses latestLiveLocation (or a fresh geolocation) and lastFleetData, skips own lorry, computes nearest by map.distance, highlights marker and pans/opens popup.
+- highlightLorry(id): swaps the marker icon to a target for the highlighted lorry and resets the previous one.
+- attachLorryClick(): binds marker click to setOrigin.
+- handleMapClick(): if in destination-select mode, sets destination; otherwise hides route/POIs.
+- setOrigin(id, name, lat, lon): records origin, clears previous layers, fetches any stored route (loadStoredRoute), and updates status.
+- setDestination(lat, lon): sets destination marker and triggers tryFetchRoute.
+- tryFetchRoute()/fetchRoute(): calls backend TomTom proxy with origin/dest strings, parses the first route, draws it or shows error.
+- drawRoute(route): converts TomTom points to lat/lon, draws polyline, saves route to server (saveRouteToServer), updates ETA/distance panel, and status.
+- clearRoute(keepOrigin): removes route/destination/POIs, clears stored route server-side if origin set, resets status.
+- clearDrawnRoute(): removes polyline/destination marker and related UI state.
+- drawRouteFromPoints(points): draws a polyline from stored [lat,lon] points and fits bounds.
+- clearPoiLayer(): removes POI layer.
+- enable/disableMapClick(): toggles map click handler for destination mode.
+- enable/disableClearButton(): toggles clear button availability.
+- setRouteStatus(text, tone): updates status text with tone classes.
+- ensureDestinationMarker(lat, lon): places/moves the destination marker (🎯).
+- setActiveRouteInfo(distance, travel, name)/clearActiveRouteInfo(): shows/hides ETA/distance panel.
+- toggleLiveTrack(): starts/stops combined live tracking + live routing loop for the logged-in lorry.
+- startLiveTrack(): fetches stored destination for configured lorry, ensures marker, sets origin, runs liveTrackTick every 10s.
+  Data flow: GET stored route -> set destination/origin -> periodic geolocation -> ingest POST -> route refresh.
+- stopLiveTrack(): clears timers, resets UI text/status.
+- liveTrackTick(): reads geolocation, posts ingest, schedules route refresh after 1s.
+- updateRouteFromLatestLocation(): re-calls TomTom proxy with latest location and stored destination; redraws and saves route.
+- loadPois(): fetches Overpass-derived POIs for selected lorry, renders GeoJSON with popups (includes tags), updates status.
+- loadStoredRoute(lorryId, name): GET latest stored route; if found, draws it and sets destination/ETA; otherwise enables destination selection.
+- saveRouteToServer(lorryId, points, destination, summary): POSTs route to /api/routes/ with CSRF.
+- clearStoredRoute(lorryId): DELETE /api/lorry/<id>/route/clear/ with CSRF.
+- Globals exposed: toggleLiveLocation, toggleLiveTrack, findClosestLorry, updateFleet, toggleCounties, clearRoute, loadPois, selectLorryFromList.
+
+Service Worker (tracking/static/tracking/service-worker.js)
+- Caches static assets cache-first; network-first for navigations; always network for /api/ and /admin to avoid stale data. Cleans old caches on activate.
+
+Nginx (nginx.conf)
+- Serves /static/ from /staticfiles with long cache, proxies all other requests to gunicorn (web:8000), forwards proxy headers. HTTP only; TLS termination would need an added 443 server block or managed TLS upstream.
+
+Docker/Compose
+- Dockerfile: Python 3.12 slim, GeoDjango deps, installs requirements, runs gunicorn. (Collectstatic should run before CMD.)
+- docker-compose.yml: services db (PostGIS), web (Django/gunicorn), nginx (reverse proxy/static), pgadmin (dev), shared volumes for DB and static.
+
+Auth and Permissions Flow
+- All API endpoints require login except ingest (now session-based) and static. Route save/clear restricted to admin or lorry owner. Ingest requires auth + CSRF and owner/admin check. Lorry auto-links to user on first matching username.
+
+Data Flow Summary
+- Live map refresh: frontend polls latest-locations -> Django -> DB -> JSON -> markers/list.
+- Live location: browser geolocation -> ingest POST -> Django validates/auth -> DB Location -> reflected on next poll; optional live route refresh.
+- Routing: origin/dest (or live dest) -> TomTom proxy -> route JSON -> draw/save -> stored in DB -> reloadable later.
+- POIs: stored route -> sampled coords -> Overpass query -> GeoJSON -> map layer.
+- Closest lorry: frontend-only, uses lastFleetData and user geolocation to find nearest other lorry, highlights marker.
+
+Cloud Hosting (Azure + Docker Compose)
+- What changed: we added a deployable Docker stack (web, nginx) pointing to Azure Container Registry, a PostGIS init SQL, and an entrypoint script that prepares the app at container start. A production compose override removes dev mounts and exposes only nginx.
+- Docker folder: docker/entrypoint.sh waits for Postgres, creates the PostGIS extension, runs Django migrations, collects static files into the shared static volume, then starts gunicorn. docker/nginx/Dockerfile bakes nginx.conf and creates the /staticfiles mount point. docker/postgres/init-db.sql ensures PostGIS is present when using the containerized DB.
+- Compose files: docker-compose.yml is the dev stack (db, web, nginx, pgadmin, local mounts). docker-compose.prod.yml trims ports/mounts for prod and shares static between web and nginx. docker-compose.azure.yml is a flattened version that points to pushed images in ACR and mounts only the static volume.
+- Azure steps (high level): build images for linux/amd64, tag/push to ACR; point the Web App to docker-compose.azure.yml with ACR credentials; set app settings (SECRET_KEY, DB host/user/pass, ALLOWED_HOSTS/CSRF, API keys); mount Azure Files to /staticfiles for shared static between web and nginx; ensure the managed Postgres has CREATE EXTENSION postgis; optionally restore data via pg_dump/psql.
+- Entrypoint in plain words: it is the container’s startup script. It pauses until the database answers, adds the PostGIS extension, runs database migrations to match the code, collects static files into the shared volume, and finally launches gunicorn so nginx can proxy to the app. Without it, the app could start before the DB is ready and would lack schema/static files.

@@ -1,3 +1,5 @@
+version: "3.9"
+
 services:
   db:
     image: postgis/postgis:16-3.4
@@ -10,6 +12,7 @@ services:
       - "5432:5432"
     volumes:
       - fleettracker_pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -20,6 +23,10 @@ services:
     build: .
     container_name: fleettracker-web
     env_file: .env
+    environment:
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}
+      DJANGO_CSRF_TRUSTED_ORIGINS: ${DJANGO_CSRF_TRUSTED_ORIGINS:-http://localhost,http://127.0.0.1}
+      CORS_ALLOW_ALL_ORIGINS: ${CORS_ALLOW_ALL_ORIGINS:-False}
     volumes:
       - .:/app
       - staticfiles:/app/staticfiles
@@ -30,14 +37,15 @@ services:
         condition: service_healthy
 
   nginx:
-    image: nginx:alpine
+    build:
+      context: .
+      dockerfile: docker/nginx/Dockerfile
     container_name: fleettracker-nginx
     depends_on:
       - web
     ports:
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - staticfiles:/staticfiles
 
   pgadmin:

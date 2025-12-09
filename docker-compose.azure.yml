@@ -1,0 +1,18 @@
+services:
+  web:
+    image: fleettrackerregistry.azurecr.io/fleettracker-web:latest
+    restart: unless-stopped
+    volumes:
+      - staticfiles:/app/staticfiles
+    ports: []  # only exposed via nginx
+
+  nginx:
+    image: fleettrackerregistry.azurecr.io/fleettracker-nginx:latest
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - staticfiles:/staticfiles
+
+volumes:
+  staticfiles:

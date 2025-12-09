@@ -1,0 +1,26 @@
+version: "3.9"
+
+services:
+  db:
+    ports: []  # do not expose Postgres publicly in production
+
+  pgadmin:
+    profiles: ["dev"]  # skip pgadmin in prod; enable with --profile dev if needed
+    ports: []
+
+  web:
+    restart: unless-stopped
+    volumes:
+      - staticfiles:/app/staticfiles  # still share static between web and nginx
+    environment:
+      DEBUG: "False"
+    ports: []  # only expose via nginx
+
+  nginx:
+    restart: unless-stopped
+    ports:
+      - "80:80"
+
+volumes:
+  fleettracker_pgdata:
+  staticfiles:
