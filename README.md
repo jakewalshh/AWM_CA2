@@ -1,7 +1,9 @@
 # Fleet Tracker (GeoDjango + Leaflet)
 
-A live fleet-tracking app with routing (TomTom), POIs (Overpass), and per-lorry accounts. Runs with PostGIS, Django/DRF, Gunicorn, and Nginx. Cloud-hosted at:  
+A live fleet-tracking PWA with routing (TomTom), POIs (Overpass), and per-lorry accounts. Runs with PostGIS, Django/DRF, Gunicorn, and Nginx. Cloud-hosted at:  
 https://fleettracker-webapp.azurewebsites.net/
+
+while it doesn't have a companion mobile app it does adapt to screen sizes, tested on iPhone 13 mini and iPhone 15.
 
 Example login (to try it out)
 - Username: `Lorry10Tayto`
