@@ -65,3 +65,15 @@ OVERPASS_URL=https://overpass-api.de/api/interpreter
 4) When logged in, create the lorrys. First create a user, e.g. HelloSirUser. Then create a lorry, name it anything e.g. LorryXYZ, and set it to the User. This will create a unique `lorry_id` tied to the lorry. Then add a location and set it to the lorry. **KEEP IN MIND** if you make multiple lorries, deleting one will **NOT** update the lorry_ids, if you delete lorry_id=3, the next lorry you create will not be lorry_id=3 but lorry_id=4. 
 5) Now when you return to the page, login as your lorry or stay as admin (admin defaults to lorry_id=2) 
 
+Notes on auth
+- Standard Django auth/session/CSRF. APIs require login; writes are restricted to admins/owners (`ReadOnlyOrAdmin`, `is_lorry_owner`, `is_overall_admin`).  
+- CSRF token is read by JS from the `csrftoken` cookie and sent on POST/DELETE.  
+
+Repo structure (quick)
+- `tracking/` Django app (models, serializers, views, static, templates).  
+- `docker/entrypoint.sh` startup script (wait for DB, migrate, collectstatic, run Gunicorn).  
+- `docker/nginx/Dockerfile` + `nginx.conf` for the reverse proxy/static server.  
+- `docker/postgres/init-db.sql` (PostGIS init for containerized DB).  
+- `docker-compose.yml` (dev), `docker-compose.prod.yml` (prod overrides), `docker-compose.azure.yml` (ACR/App Service).  
+
+Have fun exploring the map—start with `Lorry10Tayto` / `taytopassword` if you just want to click around.***
